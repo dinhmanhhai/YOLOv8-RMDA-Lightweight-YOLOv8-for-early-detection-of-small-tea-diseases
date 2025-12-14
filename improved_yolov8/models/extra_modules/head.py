@@ -298,7 +298,10 @@ class DynamicHead(nn.Module):
                 # Create projection layer if not exists
                 proj_key = f'proj_{feat_channels}'
                 if proj_key not in self.projections:
-                    self.projections[proj_key] = Conv(feat_channels, self.base_channels, k=1, act=True)
+                    proj = Conv(feat_channels, self.base_channels, k=1, act=True)
+                    # Move to same device as input
+                    proj = proj.to(feat.device)
+                    self.projections[proj_key] = proj
                 x = self.projections[proj_key](feat)
             else:
                 x = feat
