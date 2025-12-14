@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import yaml
@@ -104,24 +105,45 @@ class ImprovedYOLOv8s(nn.Module):
         p3, p4, p5 = features
         
         # Neck - Top-down
-        p3_out = self.neck_p3(p3)
+        # P3 path: process P3 (H/8 → H/8, maintains spatial size)
+        p3_out = self.neck_p3(p3)  # Output: H/8
         
-        p4_up = self.neck_p4_up(p3_out)
-        p4_cat = torch.cat([p4_up, p4], dim=1)
-        p4_out = self.neck_p4(p4_cat)
+        # P4 path: 
+        # Standard YOLOv8: upsample p3_out 2x to match p4, then concat
+        # p3_out is H/8, upsample 2x → H/4
+        # p4 is H/16, upsample 2x → H/8
+        # Actually: we need p3_out upsampled to match p4's upsampled size
+        # Or: upsample p4 to match p3_out's size
+        # Let's try: upsample p3_out 2x → H/4, then upsample p4 4x → H/4
+        p4_up_from_p3 = self.neck_p4_up(p3_out)  # H/8 → H/4
+        p4_up_from_backbone = F.interpolate(p4, size=p4_up_from_p3.shape[2:], mode='nearest')  # H/16 → H/4
+        p4_cat = torch.cat([p4_up_from_p3, p4_up_from_backbone], dim=1)
+        p4_out = self.neck_p4(p4_cat)  # Output: H/4
+        # Downsample p4_out back to H/16 to maintain original scale
+        p4_out = F.interpolate(p4_out, size=p4.shape[2:], mode='nearest')  # H/4 → H/16
         
-        p5_up = self.neck_p5_up(p4_out)
-        p5_cat = torch.cat([p5_up, p5], dim=1)
-        p5_out = self.neck_p5(p5_cat)
+        # P5 path:
+        # p4_out is H/16, upsample 2x → H/8
+        # p5 is H/32, upsample 4x → H/8
+        p5_up_from_p4 = self.neck_p5_up(p4_out)  # H/16 → H/8
+        p5_up_from_backbone = F.interpolate(p5, size=p5_up_from_p4.shape[2:], mode='nearest')  # H/32 → H/8
+        p5_cat = torch.cat([p5_up_from_p4, p5_up_from_backbone], dim=1)
+        p5_out = self.neck_p5(p5_cat)  # Output: H/8
+        # Downsample p5_out back to H/32 to maintain original scale
+        p5_out = F.interpolate(p5_out, size=p5.shape[2:], mode='nearest')  # H/8 → H/32
         
         # Neck - Bottom-up
-        p4_down = self.neck_p4_down(p5_out)
+        # p5_out is H/32, downsample 2x → H/16
+        # p4_out is H/16, same size
+        p4_down = self.neck_p4_down(p5_out)  # H/32 → H/16
         p4_cat_bottom = torch.cat([p4_down, p4_out], dim=1)
-        p4_final = self.neck_p4_bottom(p4_cat_bottom)
+        p4_final = self.neck_p4_bottom(p4_cat_bottom)  # Output: H/16
         
-        p3_down = self.neck_p3_down(p4_final)
+        # p4_final is H/16, downsample 2x → H/8
+        # p3_out is H/8, same size
+        p3_down = self.neck_p3_down(p4_final)  # H/16 → H/8
         p3_cat_bottom = torch.cat([p3_down, p3_out], dim=1)
-        p3_final = self.neck_p3_bottom(p3_cat_bottom)
+        p3_final = self.neck_p3_bottom(p3_cat_bottom)  # Output: H/8
         
         # Head
         outputs = self.head([p3_final, p4_final, p5_out])
