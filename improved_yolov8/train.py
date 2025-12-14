@@ -9,6 +9,11 @@ import os
 from pathlib import Path
 import torch
 import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader
+import yaml
+from tqdm import tqdm
+import time
 
 # Add models to path
 current_dir = Path(__file__).parent.absolute()
@@ -21,6 +26,8 @@ from models.extra_modules.RFAConv import RFCBAMConv
 from models.extra_modules.block import C2f_RFCBAMConv, AKConv, RepGFPN
 from models.extra_modules.head import DynamicHead
 from models.utils.loss import InnerIoULoss, CombinedIoULoss
+from models.data.dataset import YOLODataset, load_data_yaml
+from models.utils.detection_loss import DetectionLoss
 
 
 class ImprovedYOLOv8s(nn.Module):
@@ -140,15 +147,25 @@ def train_model(
     print("Training Improved YOLOv8s")
     print("=" * 60)
     
+    # Load dataset config
+    data_config = load_data_yaml(data_yaml)
+    num_classes = data_config['nc']
+    
+    # Create directories
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    weights_dir = save_dir / 'weights'
+    weights_dir.mkdir(exist_ok=True)
+    
     # Create model
-    model = ImprovedYOLOv8s(num_classes=6, scale='s')
+    model = ImprovedYOLOv8s(num_classes=num_classes, scale='s')
     model = model.to(device)
     
     # Loss function
-    criterion = CombinedIoULoss(scale_factor=0.7, inner_weight=0.5)
+    criterion = DetectionLoss(num_classes=num_classes)
     
     # Optimizer
-    optimizer = torch.optim.SGD(
+    optimizer = optim.SGD(
         model.parameters(),
         lr=lr0,
         momentum=0.937,
@@ -157,28 +174,182 @@ def train_model(
     )
     
     # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
         T_max=epochs,
         eta_min=lr0 * 0.01
     )
     
+    # Load datasets
+    train_dataset = YOLODataset(
+        img_dir=data_config['train'],
+        imgsz=imgsz,
+        augment=True
+    )
+    
+    val_dataset = YOLODataset(
+        img_dir=data_config['val'],
+        imgsz=imgsz,
+        augment=False
+    )
+    
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=workers,
+        pin_memory=True,
+        collate_fn=collate_fn
+    )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=workers,
+        pin_memory=True,
+        collate_fn=collate_fn
+    )
+    
     print(f"Model created with {sum(p.numel() for p in model.parameters())} parameters")
     print(f"Training on device: {device}")
     print(f"Dataset: {data_yaml}")
+    print(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")
     print(f"Epochs: {epochs}, Batch size: {batch_size}, Image size: {imgsz}")
     print("=" * 60)
     
-    # Note: This is a simplified training script
-    # For full training, you would need to:
-    # 1. Load dataset using YOLO dataset format
-    # 2. Implement data augmentation
-    # 3. Implement training loop with validation
-    # 4. Save checkpoints
-    # 5. Log metrics
+    # Training loop
+    best_loss = float('inf')
     
-    print("Training script structure created.")
-    print("Please integrate with your dataset loader and training pipeline.")
+    for epoch in range(epochs):
+        # Training phase
+        model.train()
+        train_loss = 0.0
+        train_cls_loss = 0.0
+        train_box_loss = 0.0
+        
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs}')
+        for batch_idx, batch in enumerate(pbar):
+            images = batch['img'].to(device)
+            labels = batch['labels']  # List of label tensors
+            
+            optimizer.zero_grad()
+            
+            # Forward pass
+            outputs = model(images)
+            
+            # Prepare targets for loss computation
+            # Note: This is a simplified version - full implementation would need
+            # proper anchor matching and target assignment like YOLO
+            batch_size = images.shape[0]
+            targets = []
+            for i in range(batch_size):
+                if len(labels[i]) > 0:
+                    targets.append(labels[i].to(device))
+                else:
+                    # Empty target
+                    targets.append(torch.zeros((0, 5), device=device))
+            
+            # Compute loss
+            loss_dict = criterion(outputs, targets)
+            
+            loss = loss_dict['loss']
+            
+            # Backward pass
+            loss.backward()
+            optimizer.step()
+            
+            # Accumulate losses
+            train_loss += loss.item()
+            train_cls_loss += loss_dict['cls_loss'].item()
+            train_box_loss += loss_dict['box_loss'].item()
+            
+            # Update progress bar
+            pbar.set_postfix({
+                'loss': f'{loss.item():.4f}',
+                'cls': f'{loss_dict["cls_loss"].item():.4f}',
+                'box': f'{loss_dict["box_loss"].item():.4f}'
+            })
+        
+        # Average losses
+        train_loss /= len(train_loader)
+        train_cls_loss /= len(train_loader)
+        train_box_loss /= len(train_loader)
+        
+        # Validation phase
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for batch in tqdm(val_loader, desc='Validating'):
+                images = batch['img'].to(device)
+                labels = batch['labels']
+                
+                outputs = model(images)
+                
+                # Prepare targets
+                batch_size = images.shape[0]
+                targets = []
+                for i in range(batch_size):
+                    if len(labels[i]) > 0:
+                        targets.append(labels[i].to(device))
+                    else:
+                        targets.append(torch.zeros((0, 5), device=device))
+                
+                loss_dict = criterion(outputs, targets)
+                
+                val_loss += loss_dict['loss'].item()
+        
+        val_loss /= len(val_loader)
+        
+        # Update learning rate
+        scheduler.step()
+        current_lr = optimizer.param_groups[0]['lr']
+        
+        # Print epoch summary
+        print(f"\nEpoch {epoch+1}/{epochs}")
+        print(f"  Train Loss: {train_loss:.4f} (cls: {train_cls_loss:.4f}, box: {train_box_loss:.4f})")
+        print(f"  Val Loss: {val_loss:.4f}")
+        print(f"  LR: {current_lr:.6f}")
+        
+        # Save checkpoint
+        checkpoint = {
+            'epoch': epoch + 1,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+            'loss': val_loss,
+        }
+        
+        # Save last checkpoint
+        torch.save(checkpoint, weights_dir / 'last.pt')
+        
+        # Save best checkpoint
+        if val_loss < best_loss:
+            best_loss = val_loss
+            torch.save(checkpoint, weights_dir / 'best.pt')
+            print(f"  ✓ Saved best model (loss: {best_loss:.4f})")
+        
+        print("-" * 60)
+    
+    print(f"\nTraining completed! Best validation loss: {best_loss:.4f}")
+    print(f"Model saved to: {weights_dir}")
+
+
+def collate_fn(batch):
+    """Custom collate function for batching."""
+    images = torch.stack([item['img'] for item in batch])
+    labels = [item['labels'] for item in batch]
+    img_paths = [item['img_path'] for item in batch]
+    shapes = [item['shape'] for item in batch]
+    pads = [item['pad'] for item in batch]
+    
+    return {
+        'img': images,
+        'labels': labels,
+        'img_path': img_paths,
+        'shape': shapes,
+        'pad': pads
+    }
 
 
 if __name__ == '__main__':
