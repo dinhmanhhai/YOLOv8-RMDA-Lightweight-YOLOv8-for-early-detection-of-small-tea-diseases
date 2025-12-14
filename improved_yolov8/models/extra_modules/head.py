@@ -241,13 +241,14 @@ class DynamicHead(nn.Module):
     def __init__(self, in_channels, num_classes=80, num_tasks=3):
         """
         Args:
-            in_channels: Input channels (should match feature pyramid channels)
+            in_channels: Base input channels (target channels after projection)
             num_classes: Number of object classes
             num_tasks: Number of tasks (classification, center regression, box regression)
         """
         super().__init__()
         self.num_classes = num_classes
         self.num_tasks = num_tasks
+        self.base_channels = in_channels
         
         # General View: Unified representation
         self.general_conv = Conv(in_channels, in_channels, k=1, act=True)
@@ -272,6 +273,9 @@ class DynamicHead(nn.Module):
             Conv(in_channels, in_channels, k=3, act=True),
             nn.Conv2d(in_channels, 4, 1)  # Box regression (x, y, w, h)
         )
+        
+        # Projection layers for different input channels (created dynamically)
+        self.projections = nn.ModuleDict()
     
     def forward(self, features):
         """
@@ -279,6 +283,7 @@ class DynamicHead(nn.Module):
         
         Args:
             features: List of feature maps from feature pyramid [P3, P4, P5]
+                     Each may have different channels
         
         Returns:
             List of outputs for each scale: [cls, center, box]
@@ -286,8 +291,20 @@ class DynamicHead(nn.Module):
         outputs = []
         
         for feat in features:
+            feat_channels = feat.shape[1]
+            
+            # Project to base_channels if needed
+            if feat_channels != self.base_channels:
+                # Create projection layer if not exists
+                proj_key = f'proj_{feat_channels}'
+                if proj_key not in self.projections:
+                    self.projections[proj_key] = Conv(feat_channels, self.base_channels, k=1, act=True)
+                x = self.projections[proj_key](feat)
+            else:
+                x = feat
+            
             # General View
-            x = self.general_conv(feat)
+            x = self.general_conv(x)
             
             # Apply three attention mechanisms sequentially
             x = self.scale_attention(x)      # π_L
