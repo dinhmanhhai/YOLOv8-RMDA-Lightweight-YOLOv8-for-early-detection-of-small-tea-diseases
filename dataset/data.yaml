@@ -1,0 +1,19 @@
+train: D:/code/ultralytics/ultralytics-main/dataset/chayev11/train/images
+val: D:/code/ultralytics/ultralytics-main/dataset/chayev11/val/images
+
+test: D:/code/yolov5-7.0/data/anhui1/test/images
+#A100
+#train: /home/lizhihao/code/ultralytics-A100/ultralytics-A100/dataset/chayev11/train/images
+#val: /home/lizhihao/code/ultralytics-A100/ultralytics-A100/dataset/chayev11/val/images
+#test: /home/lizhihao/code/YOLOv5/data/anhui1/test/images
+#train: /home/lizhihao/code/ultralttics-A100/dataset/chayev11/train/images
+#val: /home/lizhihao/code/ultralttics-A100/dataset/chayev11/val/images
+nc: 6
+names: ['Tea algae leaf spot', 'Tea cake', 'Tea cloud leaf blight', 'Tea exobasidium blight', 'Tea red rust', 'Tea red scab']
+
+roboflow:
+  workspace: zzz-fzx6g
+  project: chaye
+  version: 11
+  license: Private
+  url: https://app.roboflow.com/zzz-fzx6g/chaye/11
