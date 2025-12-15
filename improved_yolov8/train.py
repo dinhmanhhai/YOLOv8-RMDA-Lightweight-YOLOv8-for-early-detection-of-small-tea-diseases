@@ -15,6 +15,8 @@ from torch.utils.data import DataLoader
 import yaml
 from tqdm import tqdm
 import time
+import wandb
+import numpy as np
 
 # Add models to path
 current_dir = Path(__file__).parent.absolute()
@@ -170,10 +172,27 @@ def train_model(
     workers=4,
     lr0=0.01,
     weight_decay=0.0005,
-    save_dir='runs/train'
+    save_dir='runs/train',
+    project='improved-yolov8s',
+    name=None,
+    resume=None
 ):
     """
     Training function for Improved YOLOv8s
+    
+    Args:
+        data_yaml: Path to dataset YAML file
+        epochs: Number of training epochs
+        batch_size: Batch size
+        imgsz: Image size
+        device: Device to train on
+        workers: Number of data loader workers
+        lr0: Initial learning rate
+        weight_decay: Weight decay
+        save_dir: Directory to save checkpoints
+        project: WandB project name
+        name: WandB run name (None for auto-generated)
+        resume: WandB run ID to resume (None for new run)
     """
     print("=" * 60)
     print("Training Improved YOLOv8s")
@@ -182,6 +201,24 @@ def train_model(
     # Load dataset config
     data_config = load_data_yaml(data_yaml)
     num_classes = data_config['nc']
+    
+    # Initialize WandB
+    wandb.init(
+        project=project,
+        name=name,
+        resume=resume,
+        config={
+            'model': 'Improved YOLOv8s',
+            'num_classes': num_classes,
+            'epochs': epochs,
+            'batch_size': batch_size,
+            'imgsz': imgsz,
+            'lr0': lr0,
+            'weight_decay': weight_decay,
+            'device': device,
+            'data_yaml': data_yaml
+        }
+    )
     
     # Create directories
     save_dir = Path(save_dir)
@@ -243,15 +280,99 @@ def train_model(
         collate_fn=collate_fn
     )
     
-    print(f"Model created with {sum(p.numel() for p in model.parameters())} parameters")
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    
+    print(f"Model created with {total_params} parameters ({total_params/1e6:.2f}M)")
+    print(f"Trainable parameters: {trainable_params} ({trainable_params/1e6:.2f}M)")
     print(f"Training on device: {device}")
     print(f"Dataset: {data_yaml}")
     print(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")
     print(f"Epochs: {epochs}, Batch size: {batch_size}, Image size: {imgsz}")
     print("=" * 60)
     
+    # Log model info to WandB
+    wandb.config.update({
+        'total_params': total_params,
+        'trainable_params': trainable_params,
+        'train_samples': len(train_dataset),
+        'val_samples': len(val_dataset)
+    })
+    
+    # Calculate FPS (inference speed) - measure once at the beginning
+    print("Measuring inference speed (FPS)...")
+    model.eval()
+    dummy_input = torch.randn(1, 3, imgsz, imgsz).to(device)
+    
+    # Warmup
+    with torch.no_grad():
+        for _ in range(10):
+            _ = model(dummy_input)
+    
+    # Measure FPS
+    if device == 'cuda':
+        torch.cuda.synchronize()
+    
+    num_runs = 100
+    start_time = time.time()
+    
+    with torch.no_grad():
+        for _ in range(num_runs):
+            _ = model(dummy_input)
+    
+    if device == 'cuda':
+        torch.cuda.synchronize()
+    
+    end_time = time.time()
+    total_time = end_time - start_time
+    fps = num_runs / total_time
+    
+    print(f"Inference speed: {fps:.2f} FPS")
+    print("=" * 60)
+    
+    # Log initial FPS to WandB
+    wandb.log({'metrics/FPS': fps})
+    
+    model.train()
+    
     # Training loop
     best_loss = float('inf')
+    best_map = 0.0
+    
+    # Calculate FPS (inference speed) - measure once at the beginning
+    print("Measuring inference speed (FPS)...")
+    model.eval()
+    dummy_input = torch.randn(1, 3, imgsz, imgsz).to(device)
+    
+    # Warmup
+    with torch.no_grad():
+        for _ in range(10):
+            _ = model(dummy_input)
+    
+    # Measure FPS
+    if device == 'cuda':
+        torch.cuda.synchronize()
+    
+    num_runs = 100
+    start_time = time.time()
+    
+    with torch.no_grad():
+        for _ in range(num_runs):
+            _ = model(dummy_input)
+    
+    if device == 'cuda':
+        torch.cuda.synchronize()
+    
+    end_time = time.time()
+    total_time = end_time - start_time
+    fps = num_runs / total_time
+    
+    print(f"Inference speed: {fps:.2f} FPS")
+    
+    # Log initial FPS to WandB
+    wandb.log({'metrics/FPS': fps})
+    
+    model.train()
     
     for epoch in range(epochs):
         # Training phase
@@ -259,6 +380,7 @@ def train_model(
         train_loss = 0.0
         train_cls_loss = 0.0
         train_box_loss = 0.0
+        train_dfl_loss = 0.0  # DFL loss (using inner_iou_loss as approximation)
         
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs}')
         for batch_idx, batch in enumerate(pbar):
@@ -295,6 +417,8 @@ def train_model(
             train_loss += loss.item()
             train_cls_loss += loss_dict['cls_loss'].item()
             train_box_loss += loss_dict['box_loss'].item()
+            # Use inner_iou_loss as DFL loss approximation
+            train_dfl_loss += loss_dict.get('inner_iou_loss', loss_dict['box_loss']).item()
             
             # Update progress bar
             pbar.set_postfix({
@@ -307,10 +431,17 @@ def train_model(
         train_loss /= len(train_loader)
         train_cls_loss /= len(train_loader)
         train_box_loss /= len(train_loader)
+        train_dfl_loss /= len(train_loader)
         
         # Validation phase
         model.eval()
         val_loss = 0.0
+        val_cls_loss = 0.0
+        val_box_loss = 0.0
+        val_dfl_loss = 0.0
+        val_predictions = []
+        val_targets = []
+        
         with torch.no_grad():
             for batch in tqdm(val_loader, desc='Validating'):
                 images = batch['img'].to(device)
@@ -328,19 +459,96 @@ def train_model(
                         targets.append(torch.zeros((0, 5), device=device))
                 
                 loss_dict = criterion(outputs, targets)
-                
                 val_loss += loss_dict['loss'].item()
+                val_cls_loss += loss_dict['cls_loss'].item()
+                val_box_loss += loss_dict['box_loss'].item()
+                val_dfl_loss += loss_dict.get('inner_iou_loss', loss_dict['box_loss']).item()
+                
+                # Collect predictions and targets for metrics (every 5 epochs to save time)
+                if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
+                    from models.utils.metrics import non_max_suppression
+                    predictions = non_max_suppression(
+                        outputs,
+                        conf_threshold=0.25,
+                        iou_threshold=0.45
+                    )
+                    val_predictions.extend(predictions)
+                    val_targets.extend(targets)
         
         val_loss /= len(val_loader)
+        val_cls_loss /= len(val_loader)
+        val_box_loss /= len(val_loader)
+        val_dfl_loss /= len(val_loader)
+        
+        # Calculate metrics (every 5 epochs or last epoch)
+        val_map_50 = 0.0
+        val_map_50_95 = 0.0
+        val_precision = 0.0
+        val_recall = 0.0
+        if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
+            from models.utils.metrics import calculate_map, calculate_precision_recall
+            # Calculate mAP@0.5
+            map_results_50 = calculate_map(
+                val_predictions,
+                val_targets,
+                num_classes=num_classes,
+                iou_threshold=0.5
+            )
+            val_map_50 = map_results_50['map']
+            val_precision = map_results_50['precision']
+            val_recall = map_results_50['recall']
+            
+            # Calculate mAP@0.5:0.95 (average over multiple IoU thresholds)
+            iou_thresholds = [0.5 + 0.05 * i for i in range(10)]  # 0.5 to 0.95
+            maps_50_95 = []
+            for iou_thresh in iou_thresholds:
+                map_result = calculate_map(
+                    val_predictions,
+                    val_targets,
+                    num_classes=num_classes,
+                    iou_threshold=iou_thresh
+                )
+                maps_50_95.append(map_result['map'])
+            val_map_50_95 = np.mean(maps_50_95) if len(maps_50_95) > 0 else 0.0
         
         # Update learning rate
         scheduler.step()
         current_lr = optimizer.param_groups[0]['lr']
         
+        # Log metrics to WandB
+        log_dict = {
+            'epoch': epoch + 1,
+            'train/box_loss': train_box_loss,
+            'train/cls_loss': train_cls_loss,
+            'train/dfl_loss': train_dfl_loss,
+            'val/box_loss': val_box_loss,
+            'val/cls_loss': val_cls_loss,
+            'val/dfl_loss': val_dfl_loss,
+            'lr': current_lr
+        }
+        
+        # Add metrics if calculated
+        if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
+            log_dict.update({
+                'metrics/precision(B)': val_precision,
+                'metrics/recall(B)': val_recall,
+                'metrics/mAP50(B)': val_map_50,
+                'metrics/mAP50-95(B)': val_map_50_95,
+                'metrics/FPS': fps  # Log FPS every time metrics are calculated
+            })
+        
+        wandb.log(log_dict)
+        
         # Print epoch summary
         print(f"\nEpoch {epoch+1}/{epochs}")
-        print(f"  Train Loss: {train_loss:.4f} (cls: {train_cls_loss:.4f}, box: {train_box_loss:.4f})")
-        print(f"  Val Loss: {val_loss:.4f}")
+        print(f"  Train Loss: {train_loss:.4f} (cls: {train_cls_loss:.4f}, box: {train_box_loss:.4f}, dfl: {train_dfl_loss:.4f})")
+        print(f"  Val Loss: {val_loss:.4f} (cls: {val_cls_loss:.4f}, box: {val_box_loss:.4f}, dfl: {val_dfl_loss:.4f})")
+        if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
+            print(f"  Val mAP@0.5: {val_map_50:.4f} ({val_map_50*100:.2f}%)")
+            print(f"  Val mAP@0.5:0.95: {val_map_50_95:.4f} ({val_map_50_95*100:.2f}%)")
+            print(f"  Val Precision: {val_precision:.4f} ({val_precision*100:.2f}%)")
+            print(f"  Val Recall: {val_recall:.4f} ({val_recall*100:.2f}%)")
+            print(f"  FPS: {fps:.2f}")
         print(f"  LR: {current_lr:.6f}")
         
         # Save checkpoint
@@ -355,16 +563,29 @@ def train_model(
         # Save last checkpoint
         torch.save(checkpoint, weights_dir / 'last.pt')
         
-        # Save best checkpoint
-        if val_loss < best_loss:
+        # Save best checkpoint (based on mAP if available, otherwise loss)
+        if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
+            if val_map_50 > best_map:
+                best_map = val_map_50
+                checkpoint['map'] = val_map_50
+                checkpoint['map_50_95'] = val_map_50_95
+                torch.save(checkpoint, weights_dir / 'best.pt')
+                print(f"  ✓ Saved best model (mAP@0.5: {best_map:.4f})")
+        elif val_loss < best_loss:
             best_loss = val_loss
             torch.save(checkpoint, weights_dir / 'best.pt')
             print(f"  ✓ Saved best model (loss: {best_loss:.4f})")
         
         print("-" * 60)
     
-    print(f"\nTraining completed! Best validation loss: {best_loss:.4f}")
+    print(f"\nTraining completed!")
+    print(f"Best validation loss: {best_loss:.4f}")
+    if best_map > 0:
+        print(f"Best mAP@0.5: {best_map:.4f} ({best_map*100:.2f}%)")
     print(f"Model saved to: {weights_dir}")
+    
+    # Finish WandB run
+    wandb.finish()
 
 
 def collate_fn(batch):
@@ -395,6 +616,9 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='', help='Device (cuda/cpu)')
     parser.add_argument('--workers', type=int, default=4, help='Number of workers')
     parser.add_argument('--lr0', type=float, default=0.01, help='Initial learning rate')
+    parser.add_argument('--project', type=str, default='improved-yolov8s', help='WandB project name')
+    parser.add_argument('--name', type=str, default=None, help='WandB run name')
+    parser.add_argument('--resume', type=str, default=None, help='WandB run ID to resume')
     
     args = parser.parse_args()
     
@@ -407,6 +631,9 @@ if __name__ == '__main__':
         imgsz=args.imgsz,
         device=device,
         workers=args.workers,
-        lr0=args.lr0
+        lr0=args.lr0,
+        project=args.project,
+        name=args.name,
+        resume=args.resume
     )
 
