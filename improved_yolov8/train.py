@@ -175,7 +175,9 @@ def train_model(
     save_dir='runs/train',
     project='improved-yolov8s',
     name=None,
-    resume=None
+    resume=None,
+    early_stop_patience=20,
+    early_stop_min_delta=1e-4
 ):
     """
     Training function for Improved YOLOv8s
@@ -193,6 +195,8 @@ def train_model(
         project: WandB project name
         name: WandB run name (None for auto-generated)
         resume: WandB run ID to resume (None for new run)
+        early_stop_patience: Stop if no improvement after this many epochs
+        early_stop_min_delta: Minimum improvement to reset patience
     """
     print("=" * 60)
     print("Training Improved YOLOv8s")
@@ -338,41 +342,7 @@ def train_model(
     # Training loop
     best_loss = float('inf')
     best_map = 0.0
-    
-    # Calculate FPS (inference speed) - measure once at the beginning
-    print("Measuring inference speed (FPS)...")
-    model.eval()
-    dummy_input = torch.randn(1, 3, imgsz, imgsz).to(device)
-    
-    # Warmup
-    with torch.no_grad():
-        for _ in range(10):
-            _ = model(dummy_input)
-    
-    # Measure FPS
-    if device == 'cuda':
-        torch.cuda.synchronize()
-    
-    num_runs = 100
-    start_time = time.time()
-    
-    with torch.no_grad():
-        for _ in range(num_runs):
-            _ = model(dummy_input)
-    
-    if device == 'cuda':
-        torch.cuda.synchronize()
-    
-    end_time = time.time()
-    total_time = end_time - start_time
-    fps = num_runs / total_time
-    
-    print(f"Inference speed: {fps:.2f} FPS")
-    
-    # Log initial FPS to WandB
-    wandb.log({'metrics/FPS': fps})
-    
-    model.train()
+    epochs_no_improve = 0
     
     for epoch in range(epochs):
         # Training phase
@@ -514,6 +484,26 @@ def train_model(
         # Update learning rate
         scheduler.step()
         current_lr = optimizer.param_groups[0]['lr']
+
+        # Early stopping tracking
+        prev_best_map = best_map
+        prev_best_loss = best_loss
+        improved_map = False
+        improved_loss = False
+
+        if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
+            if val_map_50 > best_map + early_stop_min_delta:
+                best_map = val_map_50
+                improved_map = True
+
+        if val_loss < best_loss - early_stop_min_delta:
+            best_loss = val_loss
+            improved_loss = True
+
+        if improved_map or improved_loss:
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
         
         # Log metrics to WandB
         log_dict = {
@@ -524,7 +514,8 @@ def train_model(
             'val/box_loss': val_box_loss,
             'val/cls_loss': val_cls_loss,
             'val/dfl_loss': val_dfl_loss,
-            'lr': current_lr
+            'lr': current_lr,
+            'early_stop/epochs_no_improve': epochs_no_improve
         }
         
         # Add metrics if calculated
@@ -564,17 +555,20 @@ def train_model(
         torch.save(checkpoint, weights_dir / 'last.pt')
         
         # Save best checkpoint (based on mAP if available, otherwise loss)
-        if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
-            if val_map_50 > best_map:
-                best_map = val_map_50
-                checkpoint['map'] = val_map_50
-                checkpoint['map_50_95'] = val_map_50_95
-                torch.save(checkpoint, weights_dir / 'best.pt')
-                print(f"  ✓ Saved best model (mAP@0.5: {best_map:.4f})")
-        elif val_loss < best_loss:
-            best_loss = val_loss
+        if improved_map:
+            checkpoint['map'] = best_map
+            checkpoint['map_50_95'] = val_map_50_95
+            torch.save(checkpoint, weights_dir / 'best.pt')
+            print(f"  ✓ Saved best model (mAP@0.5: {best_map:.4f})")
+        elif improved_loss:
             torch.save(checkpoint, weights_dir / 'best.pt')
             print(f"  ✓ Saved best model (loss: {best_loss:.4f})")
+        
+        # Early stopping check
+        if epochs_no_improve >= early_stop_patience:
+            print(f"  Early stopping triggered at epoch {epoch+1} (no improve for {epochs_no_improve} epochs)")
+            wandb.log({'early_stop/trigger_epoch': epoch + 1})
+            break
         
         print("-" * 60)
     
@@ -609,31 +603,79 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(description='Train Improved YOLOv8s')
-    parser.add_argument('--data', type=str, default='data.yaml', help='Dataset YAML file')
-    parser.add_argument('--epochs', type=int, default=150, help='Number of epochs')
-    parser.add_argument('--batch', type=int, default=16, help='Batch size')
-    parser.add_argument('--imgsz', type=int, default=640, help='Image size')
-    parser.add_argument('--device', type=str, default='', help='Device (cuda/cpu)')
-    parser.add_argument('--workers', type=int, default=4, help='Number of workers')
-    parser.add_argument('--lr0', type=float, default=0.01, help='Initial learning rate')
-    parser.add_argument('--project', type=str, default='improved-yolov8s', help='WandB project name')
+    parser.add_argument('--config', type=str, default=None, help='Path to training config YAML')
+    parser.add_argument('--data', type=str, default=None, help='Dataset YAML file')
+    parser.add_argument('--epochs', type=int, default=None, help='Number of epochs')
+    parser.add_argument('--batch', type=int, default=None, help='Batch size')
+    parser.add_argument('--imgsz', type=int, default=None, help='Image size')
+    parser.add_argument('--device', type=str, default=None, help='Device (cuda/cpu)')
+    parser.add_argument('--workers', type=int, default=None, help='Number of workers')
+    parser.add_argument('--lr0', type=float, default=None, help='Initial learning rate')
+    parser.add_argument('--project', type=str, default=None, help='WandB project name')
     parser.add_argument('--name', type=str, default=None, help='WandB run name')
     parser.add_argument('--resume', type=str, default=None, help='WandB run ID to resume')
+    parser.add_argument('--save-dir', type=str, default=None, help='Directory to save checkpoints')
+    parser.add_argument('--early-stop-patience', type=int, default=None, help='Early stopping patience (epochs)')
+    parser.add_argument('--early-stop-min-delta', type=float, default=None, help='Minimum improvement to reset patience')
     
     args = parser.parse_args()
     
-    device = args.device if args.device else ('cuda' if torch.cuda.is_available() else 'cpu')
+    # Base defaults
+    config = {
+        'data': 'data.yaml',
+        'epochs': 150,
+        'batch': 16,
+        'imgsz': 640,
+        'device': 'cuda' if torch.cuda.is_available() else 'cpu',
+        'workers': 4,
+        'lr0': 0.01,
+        'project': 'improved-yolov8s',
+        'name': None,
+        'resume': None,
+        'save_dir': 'runs/train',
+        'early_stop_patience': 20,
+        'early_stop_min_delta': 1e-4
+    }
+    
+    # Load config file if provided
+    if args.config:
+        with open(args.config, 'r') as f:
+            file_cfg = yaml.safe_load(f) or {}
+        config.update({k: v for k, v in file_cfg.items() if v is not None})
+    
+    # Override with CLI args if provided
+    override_map = {
+        'data': args.data,
+        'epochs': args.epochs,
+        'batch': args.batch,
+        'imgsz': args.imgsz,
+        'device': args.device,
+        'workers': args.workers,
+        'lr0': args.lr0,
+        'project': args.project,
+        'name': args.name,
+        'resume': args.resume,
+        'save_dir': args.save_dir,
+        'early_stop_patience': args.early_stop_patience,
+        'early_stop_min_delta': args.early_stop_min_delta
+    }
+    for k, v in override_map.items():
+        if v is not None:
+            config[k] = v
     
     train_model(
-        data_yaml=args.data,
-        epochs=args.epochs,
-        batch_size=args.batch,
-        imgsz=args.imgsz,
-        device=device,
-        workers=args.workers,
-        lr0=args.lr0,
-        project=args.project,
-        name=args.name,
-        resume=args.resume
+        data_yaml=config['data'],
+        epochs=config['epochs'],
+        batch_size=config['batch'],
+        imgsz=config['imgsz'],
+        device=config['device'],
+        workers=config['workers'],
+        lr0=config['lr0'],
+        project=config['project'],
+        name=config['name'],
+        resume=config['resume'],
+        save_dir=config['save_dir'],
+        early_stop_patience=config['early_stop_patience'],
+        early_stop_min_delta=config['early_stop_min_delta']
     )
 

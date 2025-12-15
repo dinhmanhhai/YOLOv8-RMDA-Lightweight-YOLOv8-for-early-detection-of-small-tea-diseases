@@ -1,0 +1,24 @@
+# Default training configuration
+# Values mirror train.py defaults (can be overridden via CLI)
+
+# Dataset and paths
+data: data.yaml
+save_dir: runs/train
+
+# Training schedule
+epochs: 150
+batch: 16
+imgsz: 640
+workers: 6
+lr0: 0.001
+weight_decay: 0.0005
+
+# Device and logging
+device: cuda
+project: improved-yolov8s
+name: null
+resume: null
+
+# Early stopping
+early_stop_patience: 20
+early_stop_min_delta: 1.0e-4
