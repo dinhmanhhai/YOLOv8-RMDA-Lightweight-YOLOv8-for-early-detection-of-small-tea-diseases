@@ -7,9 +7,9 @@ save_dir: runs/train
 
 # Training schedule
 epochs: 150
-batch: 16
+batch: 4        
 imgsz: 640
-workers: 6
+workers: 4
 lr0: 0.001
 weight_decay: 0.0005
 
