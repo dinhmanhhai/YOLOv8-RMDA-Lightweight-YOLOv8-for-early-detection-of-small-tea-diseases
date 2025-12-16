@@ -190,10 +190,11 @@ def non_max_suppression(predictions, conf_threshold=0.1, iou_threshold=0.45, max
             })
         else:
             keep_indices = sorted(keep_indices)[:max_det]
+            keep_indices = torch.tensor(keep_indices, device=boxes.device, dtype=torch.long).view(-1)
             all_detections.append({
-                'boxes': boxes[keep_indices],
-                'scores': scores[keep_indices],
-                'classes': classes[keep_indices]
+                'boxes': boxes.index_select(0, keep_indices),
+                'scores': scores.index_select(0, keep_indices),
+                'classes': classes.index_select(0, keep_indices)
             })
     
     return all_detections
