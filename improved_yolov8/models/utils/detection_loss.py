@@ -50,6 +50,10 @@ class DetectionLoss(nn.Module):
             cls_pred = pred[:, :self.num_classes, :, :]  # (batch, num_classes, H, W)
             center_pred = pred[:, self.num_classes:self.num_classes+1, :, :]  # (batch, 1, H, W)
             box_pred = pred[:, self.num_classes+1:, :, :]  # (batch, 4, H, W)
+
+            # Đưa box_pred về cùng không gian với NMS/metrics:
+            # xywh đã sigmoid, normalized 0-1 trên toàn ảnh
+            box_pred = torch.sigmoid(box_pred).clamp(1e-4, 1 - 1e-4)
             
             # Initialize target tensors
             cls_target = torch.zeros_like(cls_pred)
