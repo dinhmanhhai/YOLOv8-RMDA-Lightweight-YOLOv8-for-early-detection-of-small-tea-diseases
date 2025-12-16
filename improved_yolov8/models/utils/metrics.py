@@ -52,7 +52,7 @@ def box_iou(box1, box2):
     return iou
 
 
-def non_max_suppression(predictions, conf_threshold=0.25, iou_threshold=0.45, max_det=300):
+def non_max_suppression(predictions, conf_threshold=0.1, iou_threshold=0.45, max_det=300):
     """
     Non-Maximum Suppression (NMS) for object detection.
     
@@ -85,10 +85,11 @@ def non_max_suppression(predictions, conf_threshold=0.25, iou_threshold=0.45, ma
             cls_pred = pred_b[:num_classes, :, :]  # [num_classes, H, W]
             center_pred = pred_b[num_classes:num_classes+1, :, :]  # [1, H, W]
             box_pred = pred_b[num_classes+1:, :, :]  # [4, H, W]
-            
-            # Apply sigmoid to classification and center
-            cls_prob = torch.sigmoid(cls_pred)  # [num_classes, H, W]
-            center_prob = torch.sigmoid(center_pred)  # [1, H, W]
+
+            # Activation: clamp về [1e-4, 1-1e-4] để tránh 0/1 tuyệt đối
+            cls_prob = torch.sigmoid(cls_pred).clamp(1e-4, 1 - 1e-4)     # [num_classes, H, W]
+            center_prob = torch.sigmoid(center_pred).clamp(1e-4, 1 - 1e-4)  # [1, H, W]
+            box_act = torch.sigmoid(box_pred).clamp(1e-4, 1 - 1e-4)      # xywh đều normalized 0-1
             
             # Get grid coordinates
             grid_y, grid_x = torch.meshgrid(
@@ -98,10 +99,10 @@ def non_max_suppression(predictions, conf_threshold=0.25, iou_threshold=0.45, ma
             )
             
             # Decode boxes
-            x_center = (grid_x + box_pred[0, :, :]) / W  # Normalized
-            y_center = (grid_y + box_pred[1, :, :]) / H  # Normalized
-            width = box_pred[2, :, :]  # Already normalized
-            height = box_pred[3, :, :]  # Already normalized
+            x_center = (grid_x + box_act[0, :, :]) / W  # Normalized 0-1
+            y_center = (grid_y + box_act[1, :, :]) / H  # Normalized 0-1
+            width = box_act[2, :, :]                    # Normalized 0-1
+            height = box_act[3, :, :]                   # Normalized 0-1
             
             # Filter by confidence
             conf_mask = (center_prob.squeeze(0) > conf_threshold)  # [H, W]
@@ -381,7 +382,7 @@ def calculate_map(predictions, targets, num_classes, iou_threshold=0.5):
     }
 
 
-def calculate_precision_recall(predictions, targets, num_classes, iou_threshold=0.5, conf_threshold=0.25):
+def calculate_precision_recall(predictions, targets, num_classes, iou_threshold=0.5, conf_threshold=0.1):
     """
     Calculate Precision and Recall.
     
