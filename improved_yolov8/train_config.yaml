@@ -3,11 +3,11 @@
 
 # Dataset and paths
 data: data.yaml
-save_dir: runs/train
+save_dir: runs/train500
 
 # Training schedule
-epochs: 150
-batch: 4        
+epochs: 500
+batch: 6        # giảm batch để tránh OOM trên 3090 24GB
 imgsz: 640
 workers: 4
 lr0: 0.001
