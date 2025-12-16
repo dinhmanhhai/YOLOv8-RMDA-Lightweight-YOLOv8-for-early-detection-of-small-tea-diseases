@@ -439,7 +439,7 @@ def train_model(
                     from models.utils.metrics import non_max_suppression
                     predictions = non_max_suppression(
                         outputs,
-                        conf_threshold=0.25,
+                        conf_threshold=0.1,   # align với metrics.py
                         iou_threshold=0.45
                     )
                     val_predictions.extend(predictions)
@@ -465,8 +465,16 @@ def train_model(
                 iou_threshold=0.5
             )
             val_map_50 = map_results_50['map']
-            val_precision = map_results_50['precision']
-            val_recall = map_results_50['recall']
+            # Precision/Recall tính lại với cùng ngưỡng conf/iou như NMS
+            pr_results = calculate_precision_recall(
+                val_predictions,
+                val_targets,
+                num_classes=num_classes,
+                iou_threshold=0.5,
+                conf_threshold=0.1
+            )
+            val_precision = pr_results['precision']
+            val_recall = pr_results['recall']
             
             # Calculate mAP@0.5:0.95 (average over multiple IoU thresholds)
             iou_thresholds = [0.5 + 0.05 * i for i in range(10)]  # 0.5 to 0.95
