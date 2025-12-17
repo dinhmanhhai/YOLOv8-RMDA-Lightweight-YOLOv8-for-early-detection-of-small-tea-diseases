@@ -26,8 +26,8 @@ if ! command -v yolo >/dev/null 2>&1; then
 fi
 
 yolo train \
-  model=ultralytics/cfg/models/v8/TDDet.yaml \
-  data=ultralytics/dataset/chayev11/data.yaml \
+  model=cfg/models/v8/yolov8-mobilenetv4-tea.yaml \
+  data=../dataset/data.yaml \
   device=0 \
   cache=False \
   imgsz=640 \

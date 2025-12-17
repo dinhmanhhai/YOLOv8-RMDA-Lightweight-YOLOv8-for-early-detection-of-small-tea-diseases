@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Script để chạy training YOLO với TDDet
+Script để chạy training YOLO với TDDet + optional WandB logging
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -33,6 +34,11 @@ def train_model(
     patience=30,
     project="runs/train",
     name="exp",
+    wandb_enable=False,
+    wandb_project=None,
+    wandb_name=None,
+    wandb_entity=None,
+    wandb_api_key=None,
     **kwargs
 ):
     """
@@ -49,6 +55,8 @@ def train_model(
         patience: Early stopping patience
         project: Thư mục project
         name: Tên experiment
+        wandb_enable: Bật/tắt WandB logging
+        wandb_project/name/entity/api_key: Cấu hình WandB (tuỳ chọn)
         **kwargs: Các tham số khác
     """
     print("=" * 60)
@@ -70,6 +78,10 @@ def train_model(
     print(f"Image size: {imgsz}")
     print(f"Batch size: {batch}")
     print(f"Device: {device}")
+    if wandb_enable:
+        print("WandB: ENABLED")
+    else:
+        print("WandB: disabled")
     print("=" * 60)
     
     # Kiểm tra file tồn tại
@@ -81,6 +93,21 @@ def train_model(
         print(f"Lỗi: Không tìm thấy file data.yaml: {data_yaml}")
         return
     
+    # Optional WandB setup (Ultralytics auto-logs nếu wandb có mặt)
+    if wandb_enable:
+        os.environ.pop("WANDB_DISABLED", None)
+        if wandb_project:
+            os.environ["WANDB_PROJECT"] = wandb_project
+        if wandb_name:
+            os.environ["WANDB_NAME"] = wandb_name
+        if wandb_entity:
+            os.environ["WANDB_ENTITY"] = wandb_entity
+        if wandb_api_key:
+            os.environ["WANDB_API_KEY"] = wandb_api_key
+        os.environ.setdefault("WANDB_MODE", "online")
+    else:
+        os.environ["WANDB_DISABLED"] = "true"
+
     # Load model
     print("Đang load model...")
     model = YOLO(str(model_config))
@@ -247,6 +274,11 @@ if __name__ == "__main__":
     train_parser.add_argument("--patience", type=int, default=30, help="Early stopping patience")
     train_parser.add_argument("--project", default="runs/train", help="Project directory")
     train_parser.add_argument("--name", default="exp", help="Experiment name")
+    train_parser.add_argument("--wandb", action="store_true", help="Bật WandB logging")
+    train_parser.add_argument("--wandb-project", default=None, help="WandB project")
+    train_parser.add_argument("--wandb-name", default=None, help="WandB run name")
+    train_parser.add_argument("--wandb-entity", default=None, help="WandB entity")
+    train_parser.add_argument("--wandb-api-key", default=None, help="WandB API key")
     
     # Validation parser
     val_parser = subparsers.add_parser("val", help="Validation mode")
@@ -281,7 +313,12 @@ if __name__ == "__main__":
             optimizer=args.optimizer,
             patience=args.patience,
             project=args.project,
-            name=args.name
+            name=args.name,
+            wandb_enable=args.wandb,
+            wandb_project=args.wandb_project,
+            wandb_name=args.wandb_name,
+            wandb_entity=args.wandb_entity,
+            wandb_api_key=args.wandb_api_key
         )
     elif args.mode == "val":
         validate_model(
