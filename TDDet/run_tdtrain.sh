@@ -19,8 +19,8 @@ cd "$SCRIPT_DIR"
 export WANDB_API_KEY="654322757bc621b514dc2592badff0c6eeefe6ad"
 
 python run_training.py train \
-  --model cfg/models/v8/yolov8-mobilenetv4-tea.yaml \
-  --data ../dataset/data.yaml \
+  --model ../cfg/models/v8/yolov8-mobilenetv4-tea.yaml \
+  --data dataset/data.yaml \
   --epochs 150 \
   --batch 16 \
   --imgsz 640 \
