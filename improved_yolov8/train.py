@@ -413,9 +413,12 @@ def train_model(
         val_targets = []
         
         with torch.no_grad():
-            for batch in tqdm(val_loader, desc='Validating'):
+            for batch_idx, batch in enumerate(tqdm(val_loader, desc='Validating')):
                 images = batch['img'].to(device)
                 labels = batch['labels']
+                
+                gt_counts = [len(l) for l in labels]
+                print(f"[Debug] Val batch {batch_idx} GT counts per image: {gt_counts}")
                 
                 outputs = model(images)
                 
