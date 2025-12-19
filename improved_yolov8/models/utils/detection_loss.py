@@ -38,10 +38,6 @@ class DetectionLoss(nn.Module):
         Returns:
             dict with loss components
         """
-        total_loss = 0.0
-        cls_loss_total = 0.0
-        box_loss_total = 0.0
-        
         device = predictions[0].device
         batch_size = predictions[0].shape[0]
 

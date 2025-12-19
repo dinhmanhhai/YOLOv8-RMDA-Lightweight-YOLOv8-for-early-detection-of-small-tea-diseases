@@ -434,49 +434,48 @@ def train_model(
                 val_box_loss += loss_dict['box_loss'].item()
                 val_dfl_loss += loss_dict.get('inner_iou_loss', loss_dict['box_loss']).item()
                 
-                # Collect predictions and targets for metrics (every 5 epochs to save time)
-                if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
-                    from models.utils.metrics import non_max_suppression
-                    predictions = non_max_suppression(
-                        outputs,
-                        conf_threshold=0.1,   # align với metrics.py
-                        iou_threshold=0.45
-                    )
-                    val_predictions.extend(predictions)
-                    val_targets.extend(targets)
+                # Collect predictions and targets cho metrics (mỗi epoch)
+                from models.utils.metrics import non_max_suppression
+                predictions = non_max_suppression(
+                    outputs,
+                    conf_threshold=0.1,   # align với metrics.py
+                    iou_threshold=0.45
+                )
+                val_predictions.extend(predictions)
+                val_targets.extend(targets)
         
         val_loss /= len(val_loader)
         val_cls_loss /= len(val_loader)
         val_box_loss /= len(val_loader)
         val_dfl_loss /= len(val_loader)
         
-        # Calculate metrics (every 5 epochs or last epoch)
+        # Calculate metrics
         val_map_50 = 0.0
         val_map_50_95 = 0.0
         val_precision = 0.0
         val_recall = 0.0
+        from models.utils.metrics import calculate_map, calculate_precision_recall
+        # Calculate mAP@0.5 (mỗi epoch)
+        map_results_50 = calculate_map(
+            val_predictions,
+            val_targets,
+            num_classes=num_classes,
+            iou_threshold=0.5
+        )
+        val_map_50 = map_results_50['map']
+        # Precision/Recall tính lại với cùng ngưỡng conf/iou như NMS (mỗi epoch)
+        pr_results = calculate_precision_recall(
+            val_predictions,
+            val_targets,
+            num_classes=num_classes,
+            iou_threshold=0.5,
+            conf_threshold=0.1
+        )
+        val_precision = pr_results['precision']
+        val_recall = pr_results['recall']
+        
+        # Calculate mAP@0.5:0.95 (average over multiple IoU thresholds) mỗi 5 epoch hoặc epoch cuối
         if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
-            from models.utils.metrics import calculate_map, calculate_precision_recall
-            # Calculate mAP@0.5
-            map_results_50 = calculate_map(
-                val_predictions,
-                val_targets,
-                num_classes=num_classes,
-                iou_threshold=0.5
-            )
-            val_map_50 = map_results_50['map']
-            # Precision/Recall tính lại với cùng ngưỡng conf/iou như NMS
-            pr_results = calculate_precision_recall(
-                val_predictions,
-                val_targets,
-                num_classes=num_classes,
-                iou_threshold=0.5,
-                conf_threshold=0.1
-            )
-            val_precision = pr_results['precision']
-            val_recall = pr_results['recall']
-            
-            # Calculate mAP@0.5:0.95 (average over multiple IoU thresholds)
             iou_thresholds = [0.5 + 0.05 * i for i in range(10)]  # 0.5 to 0.95
             maps_50_95 = []
             for iou_thresh in iou_thresholds:
@@ -499,10 +498,9 @@ def train_model(
         improved_map = False
         improved_loss = False
 
-        if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
-            if val_map_50 > best_map + early_stop_min_delta:
-                best_map = val_map_50
-                improved_map = True
+        if val_map_50 > best_map + early_stop_min_delta:
+            best_map = val_map_50
+            improved_map = True
 
         if val_loss < best_loss - early_stop_min_delta:
             best_loss = val_loss
@@ -526,12 +524,14 @@ def train_model(
             'early_stop/epochs_no_improve': epochs_no_improve
         }
         
-        # Add metrics if calculated
+        # Add metrics (precision/mAP@0.5 mỗi epoch, mAP@0.5:0.95 + FPS mỗi 5 epoch)
+        log_dict.update({
+            'metrics/precision(B)': val_precision,
+            'metrics/recall(B)': val_recall,
+            'metrics/mAP50(B)': val_map_50,
+        })
         if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
             log_dict.update({
-                'metrics/precision(B)': val_precision,
-                'metrics/recall(B)': val_recall,
-                'metrics/mAP50(B)': val_map_50,
                 'metrics/mAP50-95(B)': val_map_50_95,
                 'metrics/FPS': fps  # Log FPS every time metrics are calculated
             })
@@ -542,11 +542,11 @@ def train_model(
         print(f"\nEpoch {epoch+1}/{epochs}")
         print(f"  Train Loss: {train_loss:.4f} (cls: {train_cls_loss:.4f}, box: {train_box_loss:.4f}, dfl: {train_dfl_loss:.4f})")
         print(f"  Val Loss: {val_loss:.4f} (cls: {val_cls_loss:.4f}, box: {val_box_loss:.4f}, dfl: {val_dfl_loss:.4f})")
+        print(f"  Val mAP@0.5: {val_map_50:.4f} ({val_map_50*100:.2f}%)")
+        print(f"  Val Precision: {val_precision:.4f} ({val_precision*100:.2f}%)")
+        print(f"  Val Recall: {val_recall:.4f} ({val_recall*100:.2f}%)")
         if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
-            print(f"  Val mAP@0.5: {val_map_50:.4f} ({val_map_50*100:.2f}%)")
             print(f"  Val mAP@0.5:0.95: {val_map_50_95:.4f} ({val_map_50_95*100:.2f}%)")
-            print(f"  Val Precision: {val_precision:.4f} ({val_precision*100:.2f}%)")
-            print(f"  Val Recall: {val_recall:.4f} ({val_recall*100:.2f}%)")
             print(f"  FPS: {fps:.2f}")
         print(f"  LR: {current_lr:.6f}")
         
