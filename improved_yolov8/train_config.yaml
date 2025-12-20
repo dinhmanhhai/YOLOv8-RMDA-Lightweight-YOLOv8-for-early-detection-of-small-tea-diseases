@@ -18,6 +18,7 @@ device: cuda
 project: improved-yolov8s
 name: null
 resume: null
+pretrained: yolov8s.pt
 
 # Early stopping
 early_stop_patience: 20

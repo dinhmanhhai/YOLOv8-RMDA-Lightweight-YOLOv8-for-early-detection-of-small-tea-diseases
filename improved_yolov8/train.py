@@ -33,6 +33,97 @@ from models.data.dataset import YOLODataset, load_data_yaml
 from models.utils.detection_loss import DetectionLoss
 
 
+def load_pretrained_weights(model, pretrained_path, strict=False, verbose=True):
+    """
+    Load pretrained weights into model.
+    
+    Args:
+        model: Model to load weights into
+        pretrained_path: Path to pretrained weights file (.pt or .pth)
+        strict: If True, requires exact match of all layers
+        verbose: If True, print loading progress
+    
+    Returns:
+        model: Model with loaded weights
+    """
+    if not os.path.exists(pretrained_path):
+        raise FileNotFoundError(f"Pretrained weights not found: {pretrained_path}")
+    
+    if verbose:
+        print(f"Loading pretrained weights from: {pretrained_path}")
+    
+    # Load checkpoint
+    checkpoint = torch.load(pretrained_path, map_location='cpu')
+    
+    # Extract state dict
+    if isinstance(checkpoint, dict):
+        # Try different possible keys
+        if 'model' in checkpoint:
+            pretrained_state = checkpoint['model'].state_dict() if hasattr(checkpoint['model'], 'state_dict') else checkpoint['model']
+        elif 'model_state_dict' in checkpoint:
+            pretrained_state = checkpoint['model_state_dict']
+        elif 'state_dict' in checkpoint:
+            pretrained_state = checkpoint['state_dict']
+        else:
+            # Assume entire dict is state dict
+            pretrained_state = checkpoint
+    else:
+        pretrained_state = checkpoint
+    
+    # Get model state dict
+    model_state = model.state_dict()
+    
+    # Match and load weights
+    matched_layers = {}
+    skipped_layers = []
+    shape_mismatch = []
+    
+    for name, param in pretrained_state.items():
+        # Try to find matching layer in model
+        if name in model_state:
+            if model_state[name].shape == param.shape:
+                matched_layers[name] = param
+                if verbose:
+                    print(f"  ✓ Loaded: {name} {param.shape}")
+            else:
+                shape_mismatch.append((name, model_state[name].shape, param.shape))
+                if verbose:
+                    print(f"  ✗ Shape mismatch: {name} (model: {model_state[name].shape}, pretrained: {param.shape})")
+        else:
+            # Try partial matching (for different architectures)
+            # Remove prefix if exists
+            name_clean = name.replace('model.', '').replace('backbone.', '')
+            if name_clean in model_state:
+                if model_state[name_clean].shape == param.shape:
+                    matched_layers[name_clean] = param
+                    if verbose:
+                        print(f"  ✓ Loaded (renamed): {name} -> {name_clean} {param.shape}")
+                else:
+                    shape_mismatch.append((name_clean, model_state[name_clean].shape, param.shape))
+            else:
+                skipped_layers.append(name)
+                if verbose:
+                    print(f"  - Skipped: {name} (not found in model)")
+    
+    # Update model state dict
+    model_state.update(matched_layers)
+    
+    # Load with strict=False to allow partial loading
+    missing_keys, unexpected_keys = model.load_state_dict(model_state, strict=strict)
+    
+    if verbose:
+        print(f"\nSummary:")
+        print(f"  ✓ Matched layers: {len(matched_layers)}")
+        print(f"  ✗ Shape mismatches: {len(shape_mismatch)}")
+        print(f"  - Skipped layers: {len(skipped_layers)}")
+        if missing_keys:
+            print(f"  ⚠ Missing keys: {len(missing_keys)}")
+        if unexpected_keys:
+            print(f"  ⚠ Unexpected keys: {len(unexpected_keys)}")
+    
+    return model
+
+
 class ImprovedYOLOv8s(nn.Module):
     """
     Improved YOLOv8s Model Architecture
@@ -176,6 +267,7 @@ def train_model(
     project='improved-yolov8s',
     name=None,
     resume=None,
+    pretrained=None,
     early_stop_patience=20,
     early_stop_min_delta=1e-4
 ):
@@ -195,6 +287,9 @@ def train_model(
         project: WandB project name
         name: WandB run name (None for auto-generated)
         resume: WandB run ID to resume (None for new run)
+        pretrained: Path to pretrained weights file (.pt or .pth). Can be:
+                   - YOLOv8 pretrained weights (yolov8s.pt)
+                   - Improved YOLOv8s checkpoint (best.pt or last.pt)
         early_stop_patience: Stop if no improvement after this many epochs
         early_stop_min_delta: Minimum improvement to reset patience
     """
@@ -220,7 +315,8 @@ def train_model(
             'lr0': lr0,
             'weight_decay': weight_decay,
             'device': device,
-            'data_yaml': data_yaml
+            'data_yaml': data_yaml,
+            'pretrained': pretrained if pretrained else None
         }
     )
     
@@ -233,6 +329,21 @@ def train_model(
     # Create model
     model = ImprovedYOLOv8s(num_classes=num_classes, scale='s')
     model = model.to(device)
+    
+    # Load pretrained weights if provided
+    if pretrained:
+        print("=" * 60)
+        print("Loading Pretrained Weights")
+        print("=" * 60)
+        try:
+            model = load_pretrained_weights(model, pretrained, strict=False, verbose=True)
+            model = model.to(device)
+            print("=" * 60)
+            print("Pretrained weights loaded successfully!")
+            print("=" * 60)
+        except Exception as e:
+            print(f"Warning: Failed to load pretrained weights: {e}")
+            print("Continuing with random initialization...")
     
     # Loss function
     criterion = DetectionLoss(num_classes=num_classes)
@@ -638,6 +749,7 @@ if __name__ == '__main__':
     parser.add_argument('--project', type=str, default=None, help='WandB project name')
     parser.add_argument('--name', type=str, default=None, help='WandB run name')
     parser.add_argument('--resume', type=str, default=None, help='WandB run ID to resume')
+    parser.add_argument('--pretrained', type=str, default=None, help='Path to pretrained weights file (.pt or .pth)')
     parser.add_argument('--save-dir', type=str, default=None, help='Directory to save checkpoints')
     parser.add_argument('--early-stop-patience', type=int, default=None, help='Early stopping patience (epochs)')
     parser.add_argument('--early-stop-min-delta', type=float, default=None, help='Minimum improvement to reset patience')
@@ -656,6 +768,7 @@ if __name__ == '__main__':
         'project': 'improved-yolov8s',
         'name': None,
         'resume': None,
+        'pretrained': None,
         'save_dir': 'runs/train',
         'early_stop_patience': 20,
         'early_stop_min_delta': 1e-4
@@ -679,6 +792,7 @@ if __name__ == '__main__':
         'project': args.project,
         'name': args.name,
         'resume': args.resume,
+        'pretrained': args.pretrained,
         'save_dir': args.save_dir,
         'early_stop_patience': args.early_stop_patience,
         'early_stop_min_delta': args.early_stop_min_delta
@@ -698,6 +812,7 @@ if __name__ == '__main__':
         project=config['project'],
         name=config['name'],
         resume=config['resume'],
+        pretrained=config['pretrained'],
         save_dir=config['save_dir'],
         early_stop_patience=config['early_stop_patience'],
         early_stop_min_delta=config['early_stop_min_delta']
