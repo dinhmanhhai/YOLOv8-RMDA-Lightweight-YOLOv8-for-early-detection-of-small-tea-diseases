@@ -34,19 +34,25 @@ class RFCBAMConv(nn.Module):
     Combines channel attention (SE) and spatial attention with receptive field features.
     """
     
-    def __init__(self, in_channel, out_channel, kernel_size=3, stride=1):
+    def __init__(self, c1, c2, k=3, s=1):
         """
         Initialize RFCBAMConv module.
         
         Args:
-            in_channel: Input channels
-            out_channel: Output channels
-            kernel_size: Kernel size (must be odd)
-            stride: Stride
+            c1: Input channels (YOLO format)
+            c2: Output channels (YOLO format)
+            k: Kernel size (must be odd, default: 3)
+            s: Stride (default: 1)
         """
         super().__init__()
+        # Convert YOLO format to internal format
+        in_channel = c1
+        out_channel = c2
+        kernel_size = k
+        stride = s
+        
         if kernel_size % 2 == 0:
-            raise ValueError("the kernel_size must be odd.")
+            raise ValueError(f"the kernel_size must be odd, got {kernel_size}.")
         self.kernel_size = kernel_size
         self.generate = nn.Sequential(
             nn.Conv2d(in_channel, in_channel * (kernel_size**2), kernel_size, 
