@@ -18,6 +18,12 @@ setup(
         "PyYAML>=5.4.0",
         "tqdm>=4.60.0",
         "wandb>=0.15.0",
+        "matplotlib>=3.3.0",
+        "psutil>=5.7.0",
+        "pandas>=1.1.4",
+        "seaborn>=0.11.0",
+        "requests>=2.23.0",
+        "scipy>=1.4.1",
     ],
     entry_points={
         "console_scripts": [
