@@ -822,7 +822,7 @@ def parse_model(d, ch, verbose=True, warehouse_manager=None):  # model_dict, inp
 
         n = n_ = max(round(n * depth), 1) if n > 1 else n  # depth gain
         if m in (Classify, Conv, ConvTranspose, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, Focus,
-                 BottleneckCSP, C1, C2, C2f, C3, C3TR, C3Ghost, nn.Conv2d, nn.ConvTranspose2d, DWConvTranspose2d, C3x, RepC3, C2f_Faster, C2f_ODConv,
+                 BottleneckCSP, C1, C2, C2f, C3, C3TR, C3Ghost, nn.Conv2d, nn.ConvTranspose2d, DWConvTranspose2d, C3x, RepC3, C2f_ODConv,
                  CFF, C2f_DBB, GSConv, GSConvns, VoVGSCSP, VoVGSCSPns, VoVGSCSPC, C2f_CloAtt, C3_CloAtt, SCConv, C2f_SCConv, C3_SCConv, C2f_ScConv, C3_ScConv,
                  C3_EMSC, C3_EMSCP, C2f_EMSC, C2f_EMSCP, RCSOSA, KWConv, C2f_KW, C3_KW, DySnakeConv, C2f_DySnakeConv, C3_DySnakeConv,
                  DCNv2, C3_DCNv2, C2f_DCNv2, DCNV3_YOLO, C3_DCNv3, C2f_DCNv3, C3_Faster, C3_Faster_EMA, C3_ODConv,
@@ -854,7 +854,7 @@ def parse_model(d, ch, verbose=True, warehouse_manager=None):  # model_dict, inp
                 args[2] = make_divisible(min(args[2], max_channels) * width, 8)
                 args[3] = make_divisible(min(args[3], max_channels) * width, 8)
             
-            if m in (BottleneckCSP, C1, C2, C2f, C3, C3TR, C3Ghost, C3x, RepC3, C2f_Faster, C2f_ODConv, CFF, C2f_DBB,
+            if m in (BottleneckCSP, C1, C2, C2f, C3, C3TR, C3Ghost, C3x, RepC3, C2f_ODConv, CFF, C2f_DBB,
                      VoVGSCSP, VoVGSCSPns, VoVGSCSPC, C2f_CloAtt, C3_CloAtt, C2f_SCConv, C3_SCConv, C2f_ScConv, C3_ScConv,
                      C3_EMSC, C3_EMSCP, C2f_EMSC, C2f_EMSCP, RCSOSA, C2f_KW, C3_KW, C2f_DySnakeConv, C3_DySnakeConv,
                      C3_DCNv2, C2f_DCNv2, C3_DCNv3, C2f_DCNv3, C3_Faster, C3_Faster_EMA, C3_ODConv, C3_OREPA, C2f_OREPA, C3_DBB,

@@ -12,12 +12,12 @@ except (ImportError, ModuleNotFoundError):
     SAM = None
 
 try:
-    from ultralytics.models.fastsam import FastSAM
+from ultralytics.models.fastsam import FastSAM
 except (ImportError, ModuleNotFoundError):
     FastSAM = None
 
 try:
-    from ultralytics.models.nas import NAS
+from ultralytics.models.nas import NAS
 except (ImportError, ModuleNotFoundError):
     NAS = None
 from ultralytics.utils import ASSETS, SETTINGS as settings
