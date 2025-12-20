@@ -34,26 +34,51 @@ class RFCBAMConv(nn.Module):
     Combines channel attention (SE) and spatial attention with receptive field features.
     """
     
-    def __init__(self, c1, c2, k=3, s=1):
+    def __init__(self, c1, c2, k=3, s=1, p=None, g=1, d=1, act=True):
         """
         Initialize RFCBAMConv module.
         
         Args:
-            c1: Input channels (YOLO format)
+            c1: Input channels (YOLO format, auto-filled by YOLO)
             c2: Output channels (YOLO format)
             k: Kernel size (must be odd, default: 3)
             s: Stride (default: 1)
+            p: Padding (optional, auto-calculated if None)
+            g: Groups (unused, for compatibility)
+            d: Dilation (unused, for compatibility)
+            act: Activation (unused, for compatibility)
         """
         super().__init__()
+        
+        # Debug: print args to understand how YOLO passes them
+        import sys
+        print(f"DEBUG RFCBAMConv: c1={c1}, c2={c2}, k={k} (type={type(k)}), s={s} (type={type(s)})", file=sys.stderr)
+        
         # Convert YOLO format to internal format
         in_channel = c1
         out_channel = c2
         kernel_size = k
         stride = s
         
+        # Ensure kernel_size is odd
+        # If kernel_size is even, it might be that stride was passed incorrectly
+        # Check if we need to swap k and s
+        if kernel_size % 2 == 0 and stride % 2 == 1 and stride >= 3:
+            # Likely k and s are swapped: k is actually stride, s is actually kernel_size
+            kernel_size, stride = stride, kernel_size
+        
+        # Final check: if still even, make it odd
         if kernel_size % 2 == 0:
-            raise ValueError(f"the kernel_size must be odd, got {kernel_size}.")
+            # Round up to nearest odd
+            kernel_size = kernel_size + 1 if kernel_size > 0 else 3
+            import warnings
+            warnings.warn(f"RFCBAMConv: kernel_size must be odd. Adjusted from {k} to {kernel_size}")
+        
+        if kernel_size % 2 == 0:
+            raise ValueError(f"the kernel_size must be odd, got {kernel_size} (from k={k}, s={s}).")
+        
         self.kernel_size = kernel_size
+        self.stride = stride
         self.generate = nn.Sequential(
             nn.Conv2d(in_channel, in_channel * (kernel_size**2), kernel_size, 
                      padding=kernel_size//2, stride=stride, groups=in_channel, bias=False),
