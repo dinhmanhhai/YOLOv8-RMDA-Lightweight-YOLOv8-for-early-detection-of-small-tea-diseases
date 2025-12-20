@@ -34,7 +34,7 @@ class RFCBAMConv(nn.Module):
     Combines channel attention (SE) and spatial attention with receptive field features.
     """
     
-    def __init__(self, c1, c2, k=3, s=1, p=None, g=1, d=1, act=True):
+    def __init__(self, c1, c2, k=3, s=2, p=None, g=1, d=1, act=True):
         """
         Initialize RFCBAMConv module.
         
@@ -50,28 +50,15 @@ class RFCBAMConv(nn.Module):
         """
         super().__init__()
         
-        # Simplified: YAML now only passes [c2], k and s use defaults
-        # Default values: k=3, s=2 (common for downsampling convs)
-        out_channel = c2
-        kernel_size = k if k >= 3 else 3  # Default to 3 if not provided or invalid
-        stride = s if s > 0 else 2  # Default to 2 for downsampling
-        
-        # Ensure kernel_size is odd
-        if kernel_size % 2 == 0:
-            # If stride is odd and >= 3, they might be swapped
-            if stride % 2 == 1 and stride >= 3:
-                kernel_size, stride = stride, kernel_size
-            else:
-                # Round up to nearest odd
-                kernel_size = kernel_size + 1 if kernel_size > 0 else 3
-                import warnings
-                warnings.warn(f"RFCBAMConv: kernel_size must be odd. Adjusted from {k} to {kernel_size}")
-        
-        if kernel_size % 2 == 0:
-            raise ValueError(f"the kernel_size must be odd, got {kernel_size} (from c1={c1}, c2={c2}, k={k}, s={s}).")
-        
-        # Use c1 as input channels (this is always correct from YOLO)
+        # Simplified: YAML now only passes [c2]; use defaults for k and s
+        # Defaults: k=3 (odd), s=2 (downsampling)
         in_channel = c1
+        out_channel = c2
+        kernel_size = k if k % 2 == 1 else 3
+        stride = s if s > 0 else 2
+        # Force kernel_size to odd
+        if kernel_size % 2 == 0:
+            kernel_size += 1
         
         self.kernel_size = kernel_size
         self.stride = stride
@@ -86,7 +73,8 @@ class RFCBAMConv(nn.Module):
             nn.Sigmoid()
         )
         self.se = SE(in_channel)
-        self.conv = Conv(in_channel, out_channel, k=kernel_size, s=kernel_size, p=0)
+        # use stride for downsampling; padding auto via Conv helper
+        self.conv = Conv(in_channel, out_channel, k=kernel_size, s=stride, p=kernel_size//2)
         
     def forward(self, x):
         """
