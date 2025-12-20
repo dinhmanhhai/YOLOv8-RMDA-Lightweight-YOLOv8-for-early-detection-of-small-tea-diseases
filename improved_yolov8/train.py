@@ -416,9 +416,22 @@ def train_model(
             for batch_idx, batch in enumerate(tqdm(val_loader, desc='Validating')):
                 images = batch['img'].to(device)
                 labels = batch['labels']
+                img_paths = batch.get('img_path', [])
+                
+                # Extract image names from paths
+                img_names = []
+                if img_paths:
+                    for path in img_paths:
+                        if path:
+                            img_names.append(Path(path).name)
+                        else:
+                            img_names.append("unknown")
+                else:
+                    img_names = [f"img_{i}" for i in range(len(labels))]
                 
                 gt_counts = [len(l) for l in labels]
                 print(f"[Debug] Val batch {batch_idx} GT counts per image: {gt_counts}")
+                print(f"[Debug] Val batch {batch_idx} Image names: {img_names}")
                 
                 outputs = model(images)
                 
