@@ -40,9 +40,9 @@ class RFCBAMConv(nn.Module):
         
         Args:
             c1: Input channels (YOLO format, auto-filled by YOLO)
-            c2: Output channels (YOLO format)
-            k: Kernel size (must be odd, default: 3)
-            s: Stride (default: 1)
+            c2: Output channels (YOLO format) - but YOLO may pass this incorrectly
+            k: Kernel size (must be odd, default: 3) - but YOLO may pass this incorrectly  
+            s: Stride (default: 1) - but YOLO may pass this incorrectly
             p: Padding (optional, auto-calculated if None)
             g: Groups (unused, for compatibility)
             d: Dilation (unused, for compatibility)
@@ -50,32 +50,28 @@ class RFCBAMConv(nn.Module):
         """
         super().__init__()
         
-        # Debug: print args to understand how YOLO passes them
-        import sys
-        print(f"DEBUG RFCBAMConv: c1={c1}, c2={c2}, k={k} (type={type(k)}), s={s} (type={type(s)})", file=sys.stderr)
-        
-        # Convert YOLO format to internal format
-        in_channel = c1
+        # Simplified: YAML now only passes [c2], k and s use defaults
+        # Default values: k=3, s=2 (common for downsampling convs)
         out_channel = c2
-        kernel_size = k
-        stride = s
+        kernel_size = k if k >= 3 else 3  # Default to 3 if not provided or invalid
+        stride = s if s > 0 else 2  # Default to 2 for downsampling
         
         # Ensure kernel_size is odd
-        # If kernel_size is even, it might be that stride was passed incorrectly
-        # Check if we need to swap k and s
-        if kernel_size % 2 == 0 and stride % 2 == 1 and stride >= 3:
-            # Likely k and s are swapped: k is actually stride, s is actually kernel_size
-            kernel_size, stride = stride, kernel_size
-        
-        # Final check: if still even, make it odd
         if kernel_size % 2 == 0:
-            # Round up to nearest odd
-            kernel_size = kernel_size + 1 if kernel_size > 0 else 3
-            import warnings
-            warnings.warn(f"RFCBAMConv: kernel_size must be odd. Adjusted from {k} to {kernel_size}")
+            # If stride is odd and >= 3, they might be swapped
+            if stride % 2 == 1 and stride >= 3:
+                kernel_size, stride = stride, kernel_size
+            else:
+                # Round up to nearest odd
+                kernel_size = kernel_size + 1 if kernel_size > 0 else 3
+                import warnings
+                warnings.warn(f"RFCBAMConv: kernel_size must be odd. Adjusted from {k} to {kernel_size}")
         
         if kernel_size % 2 == 0:
-            raise ValueError(f"the kernel_size must be odd, got {kernel_size} (from k={k}, s={s}).")
+            raise ValueError(f"the kernel_size must be odd, got {kernel_size} (from c1={c1}, c2={c2}, k={k}, s={s}).")
+        
+        # Use c1 as input channels (this is always correct from YOLO)
+        in_channel = c1
         
         self.kernel_size = kernel_size
         self.stride = stride
