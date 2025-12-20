@@ -254,7 +254,7 @@ class DynamicHead(nn.Module):
                     proj = proj.to(feat.device)
                     self.projections[proj_key] = proj
                 x = self.projections[proj_key](feat)
-        else:
+            else:
                 x = feat
             
             # General View
