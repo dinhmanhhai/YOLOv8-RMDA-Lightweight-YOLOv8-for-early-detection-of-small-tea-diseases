@@ -223,11 +223,11 @@ class RepGFPN(nn.Module):
             n: Number of RepConv blocks
             shortcut: Whether to use shortcut connection
         """
-		super().__init__()
+        super().__init__()
         self.shortcut = shortcut and c1 == c2
         self.conv = nn.Sequential(*[RepConv(c1 if i == 0 else c2, c2, k=3, s=1, act=True) for i in range(n)])
-	
-	def forward(self, x):
+    
+    def forward(self, x):
         """Forward pass through RepGFPN."""
         out = self.conv(x)
         return out + x if self.shortcut else out
