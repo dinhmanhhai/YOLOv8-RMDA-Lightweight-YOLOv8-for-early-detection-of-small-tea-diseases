@@ -103,21 +103,35 @@ class DetectionLoss(nn.Module):
             anchor_points_all, gt_labels, gt_bboxes, mask_gt
         )
 
-        num_fg = fg_mask.sum().clamp(min=1)
+        num_fg = fg_mask.sum()
+        num_fg_clamped = num_fg.clamp(min=1)
 
         # Classification loss (BCE with alignment scores)
         cls_loss = self.bce_loss(cls_pred_all, target_scores)
-        cls_loss = (cls_loss.sum() / num_fg)
+        cls_loss = (cls_loss.sum() / num_fg_clamped)
 
         # Box loss on positives
-        if fg_mask.any():
+        if num_fg > 0:
             pred_pos = box_pred_all[fg_mask]
             target_pos = target_bboxes[fg_mask]
             box_loss = self.inner_iou_loss(pred_pos, target_pos)
         else:
-            box_loss = torch.tensor(0.0, device=device)
+            # Fallback: use all anchors with low weight to maintain gradient flow
+            # This prevents loss from collapsing to zero when no matches found
+            box_loss = self.inner_iou_loss(box_pred_all, target_bboxes).mean() * 0.1
+            # Ensure it has gradient
+            if not box_loss.requires_grad:
+                box_loss = box_loss.clone().requires_grad_(True)
 
         total_loss = self.cls_weight * cls_loss + self.box_weight * box_loss
+        
+        # Debug: Log warning if no foreground anchors found
+        if num_fg == 0:
+            import warnings
+            warnings.warn(
+                f"No foreground anchors found! cls_loss={cls_loss.item():.6f}, "
+                f"box_loss={box_loss.item():.6f}, target_scores_max={target_scores.max().item():.6f}"
+            )
 
         return {
             'loss': total_loss,

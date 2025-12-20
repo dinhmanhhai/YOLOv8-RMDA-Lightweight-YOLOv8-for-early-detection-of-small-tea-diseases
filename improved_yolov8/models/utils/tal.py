@@ -111,6 +111,16 @@ class TaskAlignedAssigner:
             max_over_gt, gt_idx = align_metric.max(dim=1)  # (N,)
             pos_mask = max_over_gt > 0
 
+            # Fallback: if no anchors match, use top-k anchors by alignment metric
+            if pos_mask.sum() == 0:
+                # Use top-k anchors per GT as fallback
+                for gt_i in range(num_gt):
+                    gt_align = align_metric[:, gt_i]  # (N,)
+                    topk_per_gt = min(self.topk, N)
+                    _, topk_idx = gt_align.topk(topk_per_gt, dim=0, largest=True)
+                    pos_mask[topk_idx] = True
+                    gt_idx[topk_idx] = gt_i
+
             fg_mask[b] = pos_mask
             if pos_mask.sum() == 0:
                 continue
@@ -123,8 +133,13 @@ class TaskAlignedAssigner:
 
             # normalized score per-gt
             norm_align = max_over_gt[pos_mask]
-            # avoid divide by zero
-            target_scores[b, pos_mask, matched_gt_cls] = norm_align / (norm_align.max() + self.eps)
+            # avoid divide by zero - ensure at least some positive scores
+            max_align = norm_align.max()
+            if max_align > self.eps:
+                target_scores[b, pos_mask, matched_gt_cls] = norm_align / max_align
+            else:
+                # Fallback: assign uniform small scores
+                target_scores[b, pos_mask, matched_gt_cls] = 0.1
 
         return target_labels, target_bboxes, target_scores, fg_mask, max_gt
 
