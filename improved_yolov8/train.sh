@@ -257,8 +257,16 @@ echo ""
 echo "Step 2: Starting training..."
 echo ""
 
-# Build YOLO command
-YOLO_CMD="yolo train"
+# Use Python wrapper to ensure modules are registered in the same process
+# Add script directory to Python path
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+
+# Change to workspace root for relative imports
+cd "$WORKSPACE_ROOT" || cd "$(dirname "$SCRIPT_DIR")" || true
+
+# Build YOLO command using Python wrapper that registers modules first
+YOLO_WRAPPER="$SCRIPT_DIR/yolo_with_modules.py"
+YOLO_CMD="python $YOLO_WRAPPER train"
 
 # Convert paths to absolute if they are relative
 if [ -n "$RESUME" ]; then
