@@ -1,85 +1,117 @@
-# Improved YOLOv8s Architecture
+# Improved YOLOv8 with RFCBAM, MixSPPF, RepGFPN, and Dynamic Head
 
-Implementation of Improved YOLOv8s architecture based on paper sensors-24-02896.
+Kiến trúc detection cải tiến dựa trên YOLOv8 với các module mới:
 
-## Architecture Overview
-
-The Improved YOLOv8s includes:
-
-### Backbone
-- **RFCBAMConv**: Residual Feature Channel-wise and Bottleneck Attention Module Convolution
-- **C2f_RFCBAM**: C2f module with RFCBAM bottleneck blocks
-- **Mix-SPPF**: Mixed Spatial Pyramid Pooling Fast (combines MaxPool and AvgPool)
-
-### Neck
-- **RepGFPN**: Re-parameterized Generalized Feature Pyramid Network
+- **RFCBAMConv**: Receptive Field Concentration-Based Attention Module
+- **C2f_RFCBAM**: C2f module với RFCBAM_Neck
+- **MixSPPF**: Mix Spatial Pyramid Pooling Fast (kết hợp MaxPool và AvgPool)
+- **RepGFPN**: Reparameterized Generalized Feature Pyramid Network
 - **AKConv**: Adaptive Kernel Convolution
-- **C2f**: Faster CSP Bottleneck with 2 convolutions
+- **Inner-IoU Loss**: Improved bounding box regression loss
 
-### Head
-- **DynamicHead**: Dynamic detection head with three attention mechanisms:
-  - Scale-aware Attention (π_L)
-  - Spatial-aware Attention (π_S)
-  - Task-aware Attention (π_C)
-
-### Loss Function
-- **Inner-IoU Loss**: Focuses on inner region of bounding boxes
-
-## Installation
+## Cài đặt
 
 ```bash
-pip install -r requirements.txt
+pip install ultralytics
+pip install einops
 ```
 
-## Dataset Structure
-
-```
-dataset/
-├── train/
-│   ├── images/
-│   └── labels/
-├── val/
-│   ├── images/
-│   └── labels/
-└── test/
-    ├── images/
-    └── labels/
-```
-
-## Training
-
-```bash
-python train.py --data data.yaml --epochs 150 --batch 16 --imgsz 640
-```
-
-## Model Configuration
-
-The model configuration is in `cfg/yolov8-improved.yaml`.
-
-## Files Structure
+## Cấu trúc
 
 ```
 improved_yolov8/
 ├── models/
-│   ├── modules/
-│   │   ├── conv.py          # Base convolution modules
-│   │   └── block.py          # Base block modules (C2f, SPPF, Mix-SPPF)
-│   ├── extra_modules/
-│   │   ├── RFAConv.py       # RFCBAMConv and related modules
-│   │   ├── block.py         # C2f_RFCBAM, AKConv, RepGFPN
-│   │   └── head.py          # DynamicHead
-│   └── utils/
-│       └── loss.py          # Inner-IoU loss
-├── cfg/
-│   └── yolov8-improved.yaml # Model configuration
-├── train.py                 # Training script
-├── data.yaml                # Dataset configuration
-└── requirements.txt         # Dependencies
+│   ├── __init__.py
+│   ├── blocks.py          # MixSPPF, RFCBAM_Neck, C2f_RFCBAM
+│   ├── rfcbam.py          # RFCBAMConv
+│   ├── repgfpn.py         # RepGFPN
+│   └── akconv.py          # AKConv
+├── configs/
+│   └── yolov8-rfcbam-dynamic.yaml  # YAML config file
+├── losses.py              # Inner-IoU loss
+├── utils.py                # Module registration
+└── README.md
 ```
 
-## Notes
+## Sử dụng
 
-- All modules from TDDet have been copied to this folder
-- The architecture follows the paper's specifications
-- Inner-IoU loss helps focus on central regions of objects
+### 1. Import và đăng ký modules
+
+```python
+from improved_yolov8 import utils  # Auto-registers modules
+from ultralytics import YOLO
+```
+
+### 2. Training
+
+**Lưu ý**: Đảm bảo file `dataset/data.yaml` có cấu hình đúng với dataset của bạn:
+- `train`: Đường dẫn đến thư mục train images
+- `val`: Đường dẫn đến thư mục validation images  
+- `nc`: Số lượng classes (ví dụ: 6 cho tea diseases dataset)
+- `names`: Danh sách tên classes
+
+```bash
+# Import modules trước khi load model
+python -c "from improved_yolov8 import utils"
+
+# Training với pretrained weights
+yolo train \
+  model=improved_yolov8/configs/yolov8-rfcbam-dynamic.yaml \
+  data=dataset/data.yaml \
+  pretrained=yolov8n.pt \
+  epochs=150 \
+  imgsz=640 \
+  batch=16 \
+  device=0
+```
+
+### 3. Validation
+
+```bash
+yolo val \
+  model=runs/train/exp/weights/best.pt \
+  data=dataset/data.yaml \
+  imgsz=640
+```
+
+### 4. Prediction
+
+```bash
+yolo predict \
+  model=runs/train/exp/weights/best.pt \
+  source=dataset/test/images \
+  imgsz=640
+```
+
+## Kiến trúc
+
+### Backbone
+- RFCBAMConv layers
+- C2f_RFCBAM blocks
+- MixSPPF at the end
+
+### Neck
+- RepGFPN for feature fusion
+- AKConv for adaptive convolution
+- Multi-scale feature processing
+
+### Head
+- Standard Detect head (có thể thay bằng Dynamic Head nếu có)
+
+## Lưu ý
+
+1. Đảm bảo import `improved_yolov8.utils` trước khi load YAML config
+2. Nếu sử dụng Dynamic Head, cần import từ ultralytics.nn.extra_modules
+3. Inner-IoU loss có thể được tích hợp vào training loop nếu cần
+4. **Dataset Configuration**: 
+   - File `dataset/data.yaml` phải có cấu hình đúng với dataset của bạn
+   - Số classes (`nc`) trong `data.yaml` sẽ override giá trị trong YAML config
+   - Đảm bảo đường dẫn `train` và `val` trong `data.yaml` đúng với hệ thống của bạn
+
+## Requirements
+
+- ultralytics >= 8.0.0
+- torch >= 1.8.0
+- einops
+- numpy
 
