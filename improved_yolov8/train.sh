@@ -5,6 +5,25 @@
 
 set -e  # Exit on error
 
+# ==================== Get script directory ====================
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+
+# Try to find workspace root (parent directory containing 'dataset' folder)
+WORKSPACE_ROOT="$SCRIPT_DIR"
+while [ "$WORKSPACE_ROOT" != "/" ]; do
+    if [ -d "$WORKSPACE_ROOT/dataset" ]; then
+        break
+    fi
+    WORKSPACE_ROOT="$(dirname "$WORKSPACE_ROOT")"
+done
+
+# If dataset not found in parent dirs, use script dir as base
+if [ "$WORKSPACE_ROOT" = "/" ]; then
+    WORKSPACE_ROOT="$(dirname "$SCRIPT_DIR")"
+fi
+
 # ==================== WandB API Key ====================
 # API Key for WandB
 # Get API Key from https://wandb.ai/settings
@@ -19,9 +38,16 @@ set -e  # Exit on error
 export WANDB_API_KEY="654322757bc621b514dc2592badff0c6eeefe6ad"
 
 # ==================== Configuration ====================
-# Model configuration
-MODEL_CONFIG="improved_yolov8/configs/yolov8-rfcbam-dynamic.yaml"
-DATA_CONFIG="dataset/data.yaml"
+# Model configuration - use absolute paths relative to script location
+MODEL_CONFIG="$SCRIPT_DIR/configs/yolov8-rfcbam-dynamic.yaml"
+# Try dataset/data.yaml relative to workspace root, or relative to script dir
+if [ -f "$WORKSPACE_ROOT/dataset/data.yaml" ]; then
+    DATA_CONFIG="$WORKSPACE_ROOT/dataset/data.yaml"
+elif [ -f "$SCRIPT_DIR/../dataset/data.yaml" ]; then
+    DATA_CONFIG="$SCRIPT_DIR/../dataset/data.yaml"
+else
+    DATA_CONFIG="dataset/data.yaml"  # Fallback to relative path
+fi
 PRETRAINED="yolov8n.pt"  # Options: yolov8n.pt, yolov8s.pt, yolov8m.pt, yolov8l.pt, yolov8x.pt
 
 # Training parameters
@@ -150,12 +176,22 @@ done
 # Check if model config exists
 if [ ! -f "$MODEL_CONFIG" ]; then
     echo "Error: Model config file not found: $MODEL_CONFIG"
+    echo "Script directory: $SCRIPT_DIR"
+    echo "Looking for: $MODEL_CONFIG"
     exit 1
 fi
 
 # Check if data config exists
 if [ ! -f "$DATA_CONFIG" ]; then
     echo "Error: Data config file not found: $DATA_CONFIG"
+    echo "Workspace root: $WORKSPACE_ROOT"
+    echo "Script directory: $SCRIPT_DIR"
+    echo "Looking for: $DATA_CONFIG"
+    echo ""
+    echo "Please ensure dataset/data.yaml exists in one of these locations:"
+    echo "  - $WORKSPACE_ROOT/dataset/data.yaml"
+    echo "  - $SCRIPT_DIR/../dataset/data.yaml"
+    echo "  - dataset/data.yaml (relative to current directory)"
     exit 1
 fi
 
@@ -170,6 +206,14 @@ fi
 echo "=========================================="
 echo "Improved YOLOv8 Training Script"
 echo "=========================================="
+echo ""
+echo "Paths:"
+echo "  Script dir:      $SCRIPT_DIR"
+echo "  Workspace root:  $WORKSPACE_ROOT"
+echo ""
+echo "Paths:"
+echo "  Script dir:      $SCRIPT_DIR"
+echo "  Workspace root:  $WORKSPACE_ROOT"
 echo ""
 echo "Configuration:"
 echo "  Model config:    $MODEL_CONFIG"
@@ -193,9 +237,17 @@ echo ""
 
 # Import and register custom modules
 echo "Step 1: Importing and registering custom modules..."
-python -c "from improved_yolov8 import utils" || {
+# Add script directory to Python path
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+# Change to workspace root for relative imports
+cd "$WORKSPACE_ROOT" || cd "$(dirname "$SCRIPT_DIR")" || true
+python -c "import sys; sys.path.insert(0, '$SCRIPT_DIR'); from improved_yolov8 import utils" || {
     echo "Error: Failed to import custom modules"
-    exit 1
+    echo "Trying alternative import method..."
+    python -c "import sys; sys.path.insert(0, '$SCRIPT_DIR'); import improved_yolov8.utils" || {
+        echo "Error: Failed to import custom modules"
+        exit 1
+    }
 }
 echo "✓ Custom modules registered successfully"
 echo ""
@@ -208,11 +260,20 @@ echo ""
 # Build YOLO command
 YOLO_CMD="yolo train"
 
+# Convert paths to absolute if they are relative
 if [ -n "$RESUME" ]; then
-    # Resume training
+    # Resume training - convert to absolute path if relative
+    if [[ "$RESUME" != /* ]]; then
+        # Relative path - try to resolve from workspace root or current dir
+        if [ -f "$WORKSPACE_ROOT/$RESUME" ]; then
+            RESUME="$WORKSPACE_ROOT/$RESUME"
+        elif [ -f "$(pwd)/$RESUME" ]; then
+            RESUME="$(cd "$(dirname "$RESUME")" && pwd)/$(basename "$RESUME")"
+        fi
+    fi
     YOLO_CMD="$YOLO_CMD resume=$RESUME"
 else
-    # New training
+    # New training - use absolute paths
     YOLO_CMD="$YOLO_CMD model=$MODEL_CONFIG data=$DATA_CONFIG pretrained=$PRETRAINED"
 fi
 
