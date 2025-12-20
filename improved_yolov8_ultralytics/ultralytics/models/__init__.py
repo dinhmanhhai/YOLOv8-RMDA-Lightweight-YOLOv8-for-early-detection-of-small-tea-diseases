@@ -1,7 +1,12 @@
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 
 from .rtdetr import RTDETR
-from .sam import SAM
 from .yolo import YOLO
 
-__all__ = "YOLO", "RTDETR", "SAM"  # allow simpler import
+# Optional imports - SAM may not be available if modules are missing
+try:
+    from .sam import SAM
+    __all__ = "YOLO", "RTDETR", "SAM"  # allow simpler import
+except (ImportError, ModuleNotFoundError):
+    SAM = None
+    __all__ = "YOLO", "RTDETR"  # allow simpler import
