@@ -31,7 +31,11 @@ pip install ultralytics
 #### training
 
 ```bash
-yolo train model=ultralytics/cfg/models/v8/TDDet.yaml data=ultralytics/dataset/chayev11/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
+# Sử dụng TDDet.yaml mới (nằm ở root của TDDet folder)
+yolo train model=TDDet.yaml data=ultralytics/dataset/chayev11/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
+
+# Hoặc sử dụng đường dẫn tuyệt đối
+yolo train model=/path/to/TDDet.yaml data=ultralytics/dataset/chayev11/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
 ```
 
 #### testing
