@@ -1,80 +1,43 @@
 """
-Đăng ký các module backbone tùy chỉnh (RFCBAMConv, C2f_RFCBAM, MixSPPF)
-từ thư mục local `yolo_sample/models`.
+Định nghĩa Conv tuỳ chỉnh `ConvRFC` và đăng ký cho YOLO sử dụng trong YAML.
 """
 
-from models.rfcbam import RFCBAMConv
-from models.blocks import C2f_RFCBAM, MixSPPF
+from ultralytics.nn.modules import Conv as BaseConv
+import builtins
+import ultralytics.nn.tasks as tasks_module
+import ultralytics.nn.modules as modules
 
 
-def register_yolo_sample_modules() -> None:
+class ConvRFC(BaseConv):
     """
-    Đăng ký module vào Ultralytics để YAML parse được:
-    - ultralytics.nn.tasks
-    - ultralytics.nn.modules
-    - parse_model.__globals__
-    Gọi hàm này TRƯỚC khi tạo YOLO(model_yaml).
+    Conv tuỳ chỉnh dựa trên Conv chuẩn của Ultralytics.
+    Hiện tại giữ nguyên hành vi, bạn có thể mở rộng thêm nếu muốn.
     """
 
-    import builtins
-    import ultralytics.nn.tasks as tasks_module
-    import ultralytics.nn.modules as modules
+    # Có thể override __init__ hoặc forward nếu cần logic khác.
+    pass
 
-    custom_modules = {
-        "RFCBAMConv": RFCBAMConv,
-        "C2f_RFCBAM": C2f_RFCBAM,
-        "MixSPPF": MixSPPF,
-    }
 
-    # Đăng ký trong tasks_module + builtins
-    for name, cls in custom_modules.items():
-        setattr(tasks_module, name, cls)
-        setattr(builtins, name, cls)
+def register_yolo_modules() -> None:
+    """
+    Đăng ký ConvRFC vào không gian tên Ultralytics:
+    - ultralytics.nn.modules (modules.ConvRFC)
+    - ultralytics.nn.tasks (tasks.ConvRFC)
+    - parse_model.__globals__ (để eval tìm thấy)
+    Gọi hàm này TRƯỚC KHI tạo YOLO(...).
+    """
 
-    # Đăng ký trong modules (không bắt buộc nhưng tiện)
-    for name, cls in custom_modules.items():
-        setattr(modules, name, cls)
+    # Đăng ký trong modules
+    modules.ConvRFC = ConvRFC
 
-    # Patch globals của parse_model
+    # Đăng ký trong tasks
+    setattr(tasks_module, "ConvRFC", ConvRFC)
+
+    # Đăng ký trong parse_model globals
     if hasattr(tasks_module, "parse_model"):
         g = tasks_module.parse_model.__globals__
-        for name, cls in custom_modules.items():
-            g[name] = cls
+        g["ConvRFC"] = ConvRFC
 
-
-def register_yolo_sample_modules() -> None:
-    """
-    Đăng ký các module custom vào Ultralytics để parse từ YAML:
-    - Thêm vào ultralytics.nn.tasks
-    - Thêm vào ultralytics.nn.modules
-    - Patch parse_model.__globals__
-    Gọi hàm này TRƯỚC khi tạo YOLO(model_yaml).
-    """
-
-    import builtins
-    import ultralytics.nn.tasks as tasks_module
-    import ultralytics.nn.modules as modules
-
-    custom_modules = {
-        "RFCBAMConv": RFCBAMConv,
-        "C2f_RFCBAM": C2f_RFCBAM,
-        "MixSPPF": MixSPPF,
-    }
-
-    # Đăng ký trong tasks_module + builtins
-    for name, cls in custom_modules.items():
-        setattr(tasks_module, name, cls)
-        setattr(builtins, name, cls)
-
-    # Đăng ký trong modules (không bắt buộc nhưng tiện)
-    for name, cls in custom_modules.items():
-        setattr(modules, name, cls)
-
-    # Patch globals của parse_model
-    if hasattr(tasks_module, "parse_model"):
-        g = tasks_module.parse_model.__globals__
-        for name, cls in custom_modules.items():
-            g[name] = cls
-
-
+    # Fallback trong builtins
+    setattr(builtins, "ConvRFC", ConvRFC)
 
