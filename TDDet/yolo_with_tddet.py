@@ -14,6 +14,16 @@ TDDet_CODES_DIR = SCRIPT_DIR / "codes"
 # Add codes directory vào sys.path để có thể import như package
 sys.path.insert(0, str(TDDet_CODES_DIR))
 
+# CRITICAL: Patch ultralytics.nn.extra_modules TRƯỚC KHI import bất cứ gì
+# Tránh lỗi khi tasks.py import từ ultralytics.nn.extra_modules
+import types
+if 'ultralytics' not in sys.modules:
+    sys.modules['ultralytics'] = types.ModuleType('ultralytics')
+if 'ultralytics.nn' not in sys.modules:
+    sys.modules['ultralytics.nn'] = types.ModuleType('ultralytics.nn')
+if 'ultralytics.nn.extra_modules' not in sys.modules:
+    sys.modules['ultralytics.nn.extra_modules'] = types.ModuleType('ultralytics.nn.extra_modules')
+
 # CRITICAL: Import TDDet modules TRƯỚC KHI import bất cứ gì từ ultralytics
 # Điều này đảm bảo modules được register trước khi parse_model được gọi
 print("Step 1: Importing TDDet modules...")
