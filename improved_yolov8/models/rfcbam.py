@@ -34,38 +34,34 @@ class RFCBAMConv(nn.Module):
     Combines channel attention (SE) and spatial attention with receptive field features.
     """
     
-    def __init__(self, c1, c2, k=3, s=2, p=None, g=1, d=1, act=True):
+    def __init__(self, c2, k=3, s=2, p=None, g=1, d=1, act=True):
         """
         Initialize RFCBAMConv module.
         
         Args:
-            c1: Input channels (YOLO format, auto-filled by YOLO)
-            c2: Output channels (YOLO format) - but YOLO may pass this incorrectly
-            k: Kernel size (must be odd, default: 3) - but YOLO may pass this incorrectly  
-            s: Stride (default: 1) - but YOLO may pass this incorrectly
-            p: Padding (optional, auto-calculated if None)
-            g: Groups (unused, for compatibility)
-            d: Dilation (unused, for compatibility)
-            act: Activation (unused, for compatibility)
+            c2: Output channels (from YAML, we now pass only [c2])
+            k: Kernel size (default 3, must be odd)
+            s: Stride (default 2 for downsampling)
+            p, g, d, act: kept for YOLO signature compatibility
         """
         super().__init__()
-        
-        # Simplified: YAML now only passes [c2]; use defaults for k and s
-        # Defaults: k=3 (odd), s=2 (downsampling)
+        # Store hyperparameters; build lazily when input channels are known
+        self.out_channel = c2
+        self.kernel_size = k if k % 2 == 1 else 3
+        self.stride = s if s > 0 else 2
+        if self.kernel_size % 2 == 0:
+            self.kernel_size += 1
+        self._built = False
+    
+    def _build(self, c1: int):
+        """Lazily build layers once input channel dimension is known."""
         in_channel = c1
-        out_channel = c2
-        kernel_size = k if k % 2 == 1 else 3
-        stride = s if s > 0 else 2
-        # Force kernel_size to odd
-        if kernel_size % 2 == 0:
-            kernel_size += 1
-        
-        self.kernel_size = kernel_size
-        self.stride = stride
+        k = self.kernel_size
+        s = self.stride
         self.generate = nn.Sequential(
-            nn.Conv2d(in_channel, in_channel * (kernel_size**2), kernel_size, 
-                     padding=kernel_size//2, stride=stride, groups=in_channel, bias=False),
-            nn.BatchNorm2d(in_channel * (kernel_size**2)),
+            nn.Conv2d(in_channel, in_channel * (k**2), k, 
+                     padding=k//2, stride=s, groups=in_channel, bias=False),
+            nn.BatchNorm2d(in_channel * (k**2)),
             nn.ReLU()
         )
         self.get_weight = nn.Sequential(
@@ -73,8 +69,8 @@ class RFCBAMConv(nn.Module):
             nn.Sigmoid()
         )
         self.se = SE(in_channel)
-        # use stride for downsampling; padding auto via Conv helper
-        self.conv = Conv(in_channel, out_channel, k=kernel_size, s=stride, p=kernel_size//2)
+        self.conv = Conv(in_channel, self.out_channel, k=k, s=s, p=k//2)
+        self._built = True
         
     def forward(self, x):
         """
@@ -87,6 +83,10 @@ class RFCBAMConv(nn.Module):
             Output tensor [B, C_out, H', W']
         """
         b, c = x.shape[0:2]
+        
+        # Lazy build on first forward when c is known
+        if not self._built:
+            self._build(c)
         
         # Channel attention
         channel_attention = self.se(x)
