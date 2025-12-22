@@ -1,7 +1,5 @@
 from ultralytics import YOLO
 
-from custom_backbone import register_yolo_sample_modules
-
 
 def main():
     """
@@ -11,10 +9,7 @@ def main():
       - model = YOLO("path_to_your_model.yaml" hoặc "path_to_your_weights.pt")
       - data="path/to/your_data.yaml"
     """
-    # 0. Đăng ký các module backbone tùy chỉnh vào Ultralytics
-    register_yolo_sample_modules()
-
-    # 1. Load model YOLO với kiến trúc backbone mới từ YAML
+    # 1. Load model YOLO với kiến trúc YOLOv8 gốc từ YAML (nc=6)
     model = YOLO("yolov8-rfcbam-backbone.yaml")
 
     # 2. Train trên dataset của bạn (liệt kê các tham số phổ biến có thể chỉnh)
