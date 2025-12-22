@@ -31,15 +31,17 @@ pip install ultralytics
 #### training
 
 ```bash
-# Sử dụng TDDet.yaml mới (nằm ở root của TDDet folder)
-yolo train model=TDDet.yaml data=ultralytics/dataset/chayev11/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
+# Chạy từ folder TDDet
+# Sử dụng wrapper script để đảm bảo TDDet modules được import đúng cách
+python yolo_with_tddet.py train model=codes/cfg/models/v8/yolov8-mobilenetv4.yaml data=../dataset/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
 
-# Hoặc sử dụng đường dẫn tuyệt đối
-yolo train model=/path/to/TDDet.yaml data=ultralytics/dataset/chayev11/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
+# Hoặc nếu có TDDet.yaml ở root folder
+python yolo_with_tddet.py train model=TDDet.yaml data=../dataset/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
 ```
 
 #### testing
 
 ```bash
-yolo val model=runs/train/exp/weights/best.pt data=ultralytics/dataset/chayev11/data.yaml split=test imgsz=640 batch=16 project=runs/val name=exp
+# Chạy từ folder TDDet
+python yolo_with_tddet.py val model=runs/train/exp/weights/best.pt data=../dataset/data.yaml split=test imgsz=640 batch=16 project=runs/val name=exp
 ```
