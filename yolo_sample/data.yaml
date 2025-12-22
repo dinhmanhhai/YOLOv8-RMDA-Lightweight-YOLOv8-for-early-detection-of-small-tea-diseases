@@ -1,0 +1,13 @@
+# Ví dụ data.yaml mẫu cho YOLO
+# Sửa lại đường dẫn train/val/test cho đúng vị trí dataset của bạn
+
+path: ../dataset  # thư mục gốc chứa images/labels (có thể bỏ nếu dùng đường dẫn tuyệt đối)
+
+train: ../dataset/chayev11/train/images
+val:   ../dataset/chayev11/val/images
+test:  ../dataset/chayev11/test/images  # hoặc bỏ nếu không có
+
+nc: 6
+names: ['Tea algae leaf spot', 'Tea cake', 'Tea cloud leaf blight', 'Tea exobasidium blight', 'Tea red rust', 'Tea red scab']
+
+

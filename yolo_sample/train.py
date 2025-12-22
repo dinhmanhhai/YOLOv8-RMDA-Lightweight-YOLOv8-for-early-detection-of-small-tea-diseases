@@ -14,7 +14,7 @@ def main():
 
     # 2. Train trên dataset demo coco8 (Ultralytics cung cấp sẵn)
     results = model.train(
-        data="../dataset/data.yaml",   # sử dụng dataset của bạn
+        data="/workspace/YOLOv8-RMDA-Lightweight-YOLOv8-for-early-detection-of-small-tea-diseases/dataset/data.yaml",   # sử dụng dataset của bạn
         epochs=100,
         imgsz=640,
         batch=16,
