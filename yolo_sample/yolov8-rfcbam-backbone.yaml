@@ -1,0 +1,47 @@
+# Ultralytics YOLO 🚀, AGPL-3.0 license
+# YOLOv8n với backbone cải tiến RFCBAMConv + C2f_RFCBAM + MixSPPF
+# Neck và Head giữ cấu trúc YOLOv8 gốc.
+
+# Parameters
+nc: 6  # số lớp (sẽ được override bởi data.yaml nếu khác)
+scales:
+  # [depth, width, max_channels]
+  n: [0.33, 0.25, 1024]
+  s: [0.33, 0.50, 1024]
+  m: [0.67, 0.75, 768]
+  l: [1.00, 1.00, 512]
+  x: [1.00, 1.25, 512]
+
+# Backbone: thay Conv/C2f bằng RFCBAMConv + C2f_RFCBAM + MixSPPF như Figure 1
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, RFCBAMConv, [64]]        # 0  P1/2
+  - [-1, 1, RFCBAMConv, [128]]       # 1  P2/4
+  - [-1, 3, C2f_RFCBAM, [128, True]] # 2
+  - [-1, 1, RFCBAMConv, [256]]       # 3  P3/8
+  - [-1, 6, C2f_RFCBAM, [256, True]] # 4  -> P3
+  - [-1, 1, RFCBAMConv, [512]]       # 5  P4/16
+  - [-1, 6, C2f_RFCBAM, [512, True]] # 6  -> P4
+  - [-1, 1, RFCBAMConv, [1024]]      # 7  P5/32
+  - [-1, 3, C2f_RFCBAM, [1024, True]]# 8
+  - [-1, 1, MixSPPF, [1024, 5]]      # 9  -> P5
+
+# Head: YOLOv8 PAN-FPN chuẩn
+head:
+  - [-1, 1, Conv, [512, 1, 1]]            # 10
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]  # 11
+  - [[-1, 6], 1, Concat, [1]]             # 12  cat P4
+  - [-1, 3, C2f, [512]]                   # 13
+  - [-1, 1, Conv, [256, 1, 1]]            # 14
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]  # 15
+  - [[-1, 4], 1, Concat, [1]]             # 16  cat P3
+  - [-1, 3, C2f, [256]]                   # 17 (P3/8)
+  - [-1, 1, Conv, [256, 3, 2]]            # 18
+  - [[-1, 13], 1, Concat, [1]]            # 19 cat P4 head
+  - [-1, 3, C2f, [512]]                   # 20 (P4/16)
+  - [-1, 1, Conv, [512, 3, 2]]            # 21
+  - [[-1, 9], 1, Concat, [1]]             # 22 cat P5
+  - [-1, 3, C2f, [1024]]                  # 23 (P5/32)
+  - [[17, 20, 23], 1, Detect, [nc]]       # 24 Detect(P3,P4,P5)
+
+
