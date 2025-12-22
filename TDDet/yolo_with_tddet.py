@@ -11,6 +11,7 @@ from pathlib import Path
 # Get script directory và add TDDet/codes vào path
 SCRIPT_DIR = Path(__file__).parent.absolute()
 TDDet_CODES_DIR = SCRIPT_DIR / "codes"
+# Add codes directory vào sys.path để có thể import như package
 sys.path.insert(0, str(TDDet_CODES_DIR))
 
 # CRITICAL: Import TDDet modules TRƯỚC KHI import bất cứ gì từ ultralytics
@@ -18,28 +19,18 @@ sys.path.insert(0, str(TDDet_CODES_DIR))
 print("Step 1: Importing TDDet modules...")
 try:
     # Import backbone modules để MobileNetV4ConvLarge có sẵn
-    # Sử dụng import trực tiếp từ file để tránh conflict với ultralytics
-    import importlib.util
-    mobilenetv4_path = TDDet_CODES_DIR / "nn" / "backbone" / "mobilenetv4.py"
-    spec = importlib.util.spec_from_file_location("tddet_mobilenetv4", mobilenetv4_path)
-    tddet_mobilenetv4 = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tddet_mobilenetv4)
-    
-    MobileNetV4ConvSmall = tddet_mobilenetv4.MobileNetV4ConvSmall
-    MobileNetV4ConvMedium = tddet_mobilenetv4.MobileNetV4ConvMedium
-    MobileNetV4ConvLarge = tddet_mobilenetv4.MobileNetV4ConvLarge
-    MobileNetV4HybridMedium = tddet_mobilenetv4.MobileNetV4HybridMedium
-    MobileNetV4HybridLarge = tddet_mobilenetv4.MobileNetV4HybridLarge
+    # Import như package để relative imports hoạt động đúng
+    from nn.backbone.mobilenetv4 import (
+        MobileNetV4ConvSmall,
+        MobileNetV4ConvMedium,
+        MobileNetV4ConvLarge,
+        MobileNetV4HybridMedium,
+        MobileNetV4HybridLarge
+    )
     print("✓ MobileNetV4ConvLarge imported successfully")
     
     # Import extra_modules để CFF, DySample có sẵn
-    block_path = TDDet_CODES_DIR / "nn" / "extra_modules" / "block.py"
-    spec_block = importlib.util.spec_from_file_location("tddet_block", block_path)
-    tddet_block = importlib.util.module_from_spec(spec_block)
-    spec_block.loader.exec_module(tddet_block)
-    
-    CFF = tddet_block.CFF
-    DySample = tddet_block.DySample
+    from nn.extra_modules.block import CFF, DySample
     print("✓ CFF, DySample imported successfully")
     
     # Import tasks module và patch globals để modules có sẵn trong parse_model
