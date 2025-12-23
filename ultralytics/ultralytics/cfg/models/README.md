@@ -63,3 +63,5 @@ Sharing your work here allows others to benefit from your insights and expands t
 To contribute, review the [Contributing Guide](https://docs.ultralytics.com/help/contributing/) for instructions on submitting a [Pull Request (PR)](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests).
 
 Thank you for helping improve the Ultralytics model zoo.
+
+yolo train model="TDDet/ultralytics/cfg/models/v8/yolov8-mobilenetv4.yaml" data="TDDet/data.yaml" device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
