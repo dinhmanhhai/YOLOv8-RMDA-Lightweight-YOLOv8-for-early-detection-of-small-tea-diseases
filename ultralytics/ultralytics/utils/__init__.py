@@ -923,7 +923,7 @@ SETTINGS_FILE = USER_CONFIG_DIR / "settings.json"
 
 
 def colorstr(*input):
-    r"""Color a string based on the provided color and style arguments using ANSI escape codes.
+    r"""Color a string based on the provided color and style arguments using ANSI escape ultralytics.
 
     This function can be called in two ways:
         - colorstr('color', 'style', 'your string')
@@ -936,7 +936,7 @@ def colorstr(*input):
             last string is the one to be colored.
 
     Returns:
-        (str): The input string wrapped with ANSI escape codes for the specified color and style.
+        (str): The input string wrapped with ANSI escape ultralytics for the specified color and style.
 
     Examples:
         >>> colorstr("blue", "bold", "hello world")
@@ -978,13 +978,13 @@ def colorstr(*input):
 
 
 def remove_colorstr(input_string):
-    """Remove ANSI escape codes from a string, effectively un-coloring it.
+    """Remove ANSI escape ultralytics from a string, effectively un-coloring it.
 
     Args:
         input_string (str): The string to remove color and style from.
 
     Returns:
-        (str): A new string with all ANSI escape codes removed.
+        (str): A new string with all ANSI escape ultralytics removed.
 
     Examples:
         >>> remove_colorstr(colorstr("blue", "bold", "hello world"))

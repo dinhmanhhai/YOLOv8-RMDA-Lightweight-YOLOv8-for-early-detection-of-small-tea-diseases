@@ -651,7 +651,7 @@ SETTINGS_YAML = USER_CONFIG_DIR / "settings.yaml"
 
 def colorstr(*input):
     """
-    Colors a string based on the provided color and style arguments. Utilizes ANSI escape codes.
+    Colors a string based on the provided color and style arguments. Utilizes ANSI escape ultralytics.
     See https://en.wikipedia.org/wiki/ANSI_escape_code for more details.
 
     This function can be called in two ways:
@@ -671,7 +671,7 @@ def colorstr(*input):
         Misc: 'end', 'bold', 'underline'
 
     Returns:
-        (str): The input string wrapped with ANSI escape codes for the specified color and style.
+        (str): The input string wrapped with ANSI escape ultralytics for the specified color and style.
 
     Examples:
         >>> colorstr('blue', 'bold', 'hello world')
@@ -704,13 +704,13 @@ def colorstr(*input):
 
 def remove_colorstr(input_string):
     """
-    Removes ANSI escape codes from a string, effectively un-coloring it.
+    Removes ANSI escape ultralytics from a string, effectively un-coloring it.
 
     Args:
         input_string (str): The string to remove color and style from.
 
     Returns:
-        (str): A new string with all ANSI escape codes removed.
+        (str): A new string with all ANSI escape ultralytics removed.
 
     Examples:
         >>> remove_colorstr(colorstr('blue', 'bold', 'hello world'))

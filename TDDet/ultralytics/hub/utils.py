@@ -127,7 +127,7 @@ def smart_request(method, url, retry=3, timeout=30, thread=True, code=-1, verbos
     Returns:
         (requests.Response): The HTTP response object. If the request is executed in a separate thread, returns None.
     """
-    retry_codes = (408, 500)  # retry only these codes
+    retry_codes = (408, 500)  # retry only these ultralytics
 
     @TryExcept(verbose=verbose)
     def func(func_method, func_url, **func_kwargs):
@@ -138,7 +138,7 @@ def smart_request(method, url, retry=3, timeout=30, thread=True, code=-1, verbos
             if (time.time() - t0) > timeout:
                 break
             r = requests_with_progress(func_method, func_url, **func_kwargs)  # i.e. get(url, data, json, files)
-            if r.status_code < 300:  # return codes in the 2xx range are generally considered "good" or "successful"
+            if r.status_code < 300:  # return ultralytics in the 2xx range are generally considered "good" or "successful"
                 break
             try:
                 m = r.json().get("message", "No JSON message.")

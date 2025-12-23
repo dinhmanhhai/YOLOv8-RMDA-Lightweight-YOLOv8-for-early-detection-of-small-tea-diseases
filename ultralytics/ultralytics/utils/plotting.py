@@ -21,7 +21,7 @@ from ultralytics.utils.files import increment_path
 class Colors:
     """Ultralytics color palette for visualization and plotting.
 
-    This class provides methods to work with the Ultralytics color palette, including converting hex color codes to RGB
+    This class provides methods to work with the Ultralytics color palette, including converting hex color ultralytics to RGB
     values and accessing predefined color schemes for object detection and pose estimation.
 
     ## Ultralytics Color Palette
@@ -144,7 +144,7 @@ class Colors:
         )
 
     def __call__(self, i: int | torch.Tensor, bgr: bool = False) -> tuple:
-        """Convert hex color codes to RGB values.
+        """Convert hex color ultralytics to RGB values.
 
         Args:
             i (int | torch.Tensor): Color index.
@@ -158,7 +158,7 @@ class Colors:
 
     @staticmethod
     def hex2rgb(h: str) -> tuple:
-        """Convert hex color codes to RGB values (i.e. default PIL order)."""
+        """Convert hex color ultralytics to RGB values (i.e. default PIL order)."""
         return tuple(int(h[1 + i : 1 + i + 2], 16) for i in (0, 2, 4))
 
 

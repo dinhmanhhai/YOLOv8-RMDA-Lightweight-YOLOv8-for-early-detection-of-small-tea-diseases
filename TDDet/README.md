@@ -33,7 +33,7 @@ pip install ultralytics
 ```bash
 # Chạy từ folder TDDet
 # Sử dụng wrapper script để đảm bảo TDDet modules được import đúng cách
-python yolo_with_tddet.py train model=codes/cfg/models/v8/yolov8-mobilenetv4.yaml data=../dataset/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
+python yolo_with_tddet.py train model=ultralytics/cfg/models/v8/yolov8-mobilenetv4.yaml data=../dataset/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
 
 # Hoặc nếu có TDDet.yaml ở root folder
 python yolo_with_tddet.py train model=TDDet.yaml data=../dataset/data.yaml device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp

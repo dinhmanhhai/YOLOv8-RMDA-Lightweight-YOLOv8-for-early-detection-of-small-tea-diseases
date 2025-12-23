@@ -1018,7 +1018,7 @@ names:
   998: ear
   999: toilet paper
 
-# Imagenet class codes to human-readable names
+# Imagenet class ultralytics to human-readable names
 map:
   n01440764: tench
   n01443537: goldfish

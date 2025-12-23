@@ -21,7 +21,7 @@ class Colors:
     """
     Ultralytics default color palette https://ultralytics.com/.
 
-    This class provides methods to work with the Ultralytics color palette, including converting hex color codes to
+    This class provides methods to work with the Ultralytics color palette, including converting hex color ultralytics to
     RGB values.
 
     Attributes:
@@ -83,13 +83,13 @@ class Colors:
         )
 
     def __call__(self, i, bgr=False):
-        """Converts hex color codes to RGB values."""
+        """Converts hex color ultralytics to RGB values."""
         c = self.palette[int(i) % self.n]
         return (c[2], c[1], c[0]) if bgr else c
 
     @staticmethod
     def hex2rgb(h):
-        """Converts hex color codes to RGB values (i.e. default PIL order)."""
+        """Converts hex color ultralytics to RGB values (i.e. default PIL order)."""
         return tuple(int(h[1 + i : 1 + i + 2], 16) for i in (0, 2, 4))
 
 

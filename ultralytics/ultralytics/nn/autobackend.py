@@ -45,7 +45,7 @@ def check_class_names(names: list | dict) -> dict[int, str]:
                 f"{n}-class dataset requires class indices 0-{n - 1}, but you have invalid class indices "
                 f"{min(names.keys())}-{max(names.keys())} defined in your dataset YAML."
             )
-        if isinstance(names[0], str) and names[0].startswith("n0"):  # imagenet class codes, i.e. 'n01440764'
+        if isinstance(names[0], str) and names[0].startswith("n0"):  # imagenet class ultralytics, i.e. 'n01440764'
             names_map = YAML.load(ROOT / "cfg/datasets/ImageNet.yaml")["map"]  # human-readable names
             names = {k: names_map[v] for k, v in names.items()}
     return names

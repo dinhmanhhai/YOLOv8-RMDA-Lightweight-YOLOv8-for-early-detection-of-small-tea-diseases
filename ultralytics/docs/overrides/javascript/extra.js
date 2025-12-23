@@ -141,7 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const links = document.querySelectorAll(".md-select__link[hreflang]");
     if (!links.length) return;
 
-    // Derive language codes from the actual links (config-driven)
+    // Derive language ultralytics from the actual links (config-driven)
     const langCodes = Array.from(links)
       .map((link) => link.getAttribute("hreflang"))
       .filter(Boolean);
