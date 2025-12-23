@@ -1,0 +1,10 @@
+path: /workspace/YOLOv8-RMDA-Lightweight-YOLOv8-for-early-detection-of-small-tea-diseases/dataset  
+
+train: /workspace/YOLOv8-RMDA-Lightweight-YOLOv8-for-early-detection-of-small-tea-diseases/dataset/train/images
+val:   /workspace/YOLOv8-RMDA-Lightweight-YOLOv8-for-early-detection-of-small-tea-diseases/dataset/val/images
+test:  /workspace/YOLOv8-RMDA-Lightweight-YOLOv8-for-early-detection-of-small-tea-diseases/dataset/test/images  
+
+nc: 6
+names: ['Tea algae leaf spot', 'Tea cake', 'Tea cloud leaf blight', 'Tea exobasidium blight', 'Tea red rust', 'Tea red scab']
+
+
