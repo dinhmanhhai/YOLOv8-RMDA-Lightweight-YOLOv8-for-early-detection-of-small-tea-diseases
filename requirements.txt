@@ -6,5 +6,3 @@ wandb
 timm
 einops
 efficientnet_pytorch
-
-yolo detect train model="ultralytics/cfg/models/v8/yolov8-mobilenetv4.yaml" data="data.yaml" device=0 cache=False imgsz=640 epochs=150 batch=16 close_mosaic=10 workers=1 optimizer=SGD patience=30 project=runs/train name=exp
