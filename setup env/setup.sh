@@ -12,7 +12,7 @@ sudo apt update
 sudo apt install python3.9 python3.9-dev python3.9-venv
 
 # Create virtual environment
-python3 -m venv yolov8_env
+python3.9 -m venv yolov8_env
 
 # Activate virtual environment
 source yolov8_env/bin/activate
