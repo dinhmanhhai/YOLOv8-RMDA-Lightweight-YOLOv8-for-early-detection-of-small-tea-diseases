@@ -1028,7 +1028,10 @@ def parse_model(d, ch, verbose=True, warehouse_manager=None):  # model_dict, inp
             m_ = m
             m_.backbone = True
         else:
-            m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
+            if isinstance(m, nn.Module):
+                m_ = m
+            else:
+                m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
             t = str(m)[8:-2].replace('__main__.', '')  # module type
         m.np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type = i + 4 if is_backbone else i, f, t  # attach index, 'from' index, type
