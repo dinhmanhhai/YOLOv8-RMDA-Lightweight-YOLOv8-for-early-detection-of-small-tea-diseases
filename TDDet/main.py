@@ -12,7 +12,7 @@ model.train(
     data="data.yaml",           # path to dataset YAML
     epochs=150,                 # number of epochs to train for
     patience=50,                # epochs to wait for no observable improvement for early stopping of training
-    batch=8,                    # number of images per batch (-1 for AutoBatch)
+    batch=10,                    # number of images per batch (-1 for AutoBatch)
     imgsz=640,                  # size of input images as integer
     save=True,                  # save train checkpoints and predict results
     save_period=-1,             # Save checkpoint every x epochs (disabled if < 1)
