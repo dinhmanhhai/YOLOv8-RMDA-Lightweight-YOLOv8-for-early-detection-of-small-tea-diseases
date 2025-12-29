@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-__all__ = ['MobileNetV4ConvSmall', 'MobileNetV4ConvMedium', 'MobileNetV4ConvLarge', 'MobileNetV4ConvLargeMQA', 'MobileNetV4HybridMedium', 'MobileNetV4HybridLarge', 'FeatureSelector']
+__all__ = ['MobileNetV4ConvSmall', 'MobileNetV4ConvMedium', 'MobileNetV4ConvLarge', 'MobileNetV4ConvLargeMQA', 'MobileNetV4HybridMedium', 'MobileNetV4HybridLarge', 'FeatureSelector', 'MNV4Stage']
 
 MNV4ConvSmall_BLOCK_SPECS = {
     "conv0": {
@@ -566,6 +566,63 @@ class FeatureSelector(nn.Module):
         # MobileNetV4 returns [None, None, P2, P3, P4, P5]
         # x is this list
         return x[self.index]
+
+class MNV4Stage(nn.Module):
+    """
+    Constructs a specific stage of MobileNetV4 based on the model specification.
+    Args:
+        c1 (int): Input channels (not used but required by YOLO parsing logic).
+        c2 (int): Output channels (not used but required by YOLO parsing logic).
+        model_name (str): Name of the model spec to use (e.g., 'MobileNetV4ConvLargeMQA').
+        stage_name (str): Name of the stage specifiction key (e.g., 'layer1', 'layer2').
+    """
+    def __init__(self, c1, c2, model_name, stage_name):
+        super().__init__()
+        # Retrieve the full model specification
+        if model_name not in MODEL_SPECS:
+            raise ValueError(f"Unknown model name: {model_name}. Available: {list(MODEL_SPECS.keys())}")
+        
+        spec = MODEL_SPECS[model_name]
+        
+        # Retrieve the specific stage specification
+        if stage_name not in spec:
+            raise ValueError(f"Unknown stage name: {stage_name} for model {model_name}. Available: {list(spec.keys())}")
+            
+        layer_spec = spec[stage_name]
+        
+        # Build the blocks for this stage using the existing helper function
+        self.blocks = build_blocks(layer_spec)
+        
+        # Calculate output channel for YOLO parser
+        # Get the last module in the sequential block
+        last_block = list(self.blocks.children())[-1]
+        
+        # Try to determine output channels based on block type
+        if hasattr(last_block, 'out_channels'):
+            self.channel = last_block.out_channels
+        elif hasattr(last_block, 'conv'): # ConvBN
+             if hasattr(last_block.conv, 'out_channels'):
+                 self.channel = last_block.conv.out_channels
+             else: # Sequential inside ConvBN (e.g. conv+bn+act)
+                 self.channel = list(last_block.conv.children())[0].out_channels
+        elif isinstance(last_block, nn.Conv2d):
+            self.channel = last_block.out_channels
+        # For UIB/FusedIB/UIBMQA blocks which are custom
+        # We can also look at the layer spec directly
+        elif 'block_specs' in layer_spec:
+             # The last spec usually contains [inp, oup, ...] 
+             # For convbn: [k, c, s, use_bias] -> c is index 1
+             # For uib: [inp, oup, ...] -> oup is index 1
+             # For fused_ib: [inp, oup, ...] -> oup is index 1
+             self.channel = layer_spec['block_specs'][-1][1]
+        else:
+             # Fallback: Forward a dummy tensor
+             with torch.no_grad():
+                 dummy = torch.zeros(1, c1, 64, 64)
+                 self.channel = self.blocks(dummy).size(1)
+
+    def forward(self, x):
+        return self.blocks(x)
 
 def MobileNetV4ConvLargeMQA():
     """MobileNetV4-Large with Multi-Query Attention for TDDet."""
