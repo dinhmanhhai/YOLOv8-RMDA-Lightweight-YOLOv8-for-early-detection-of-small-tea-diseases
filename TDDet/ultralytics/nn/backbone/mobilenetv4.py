@@ -571,12 +571,10 @@ class MNV4Stage(nn.Module):
     """
     Constructs a specific stage of MobileNetV4 based on the model specification.
     Args:
-        c1 (int): Input channels (not used but required by YOLO parsing logic).
-        c2 (int): Output channels (not used but required by YOLO parsing logic).
         model_name (str): Name of the model spec to use (e.g., 'MobileNetV4ConvLargeMQA').
         stage_name (str): Name of the stage specifiction key (e.g., 'layer1', 'layer2').
     """
-    def __init__(self, c1, c2, model_name, stage_name):
+    def __init__(self, model_name, stage_name):
         super().__init__()
         # Retrieve the full model specification
         if model_name not in MODEL_SPECS:
@@ -616,10 +614,8 @@ class MNV4Stage(nn.Module):
              # For fused_ib: [inp, oup, ...] -> oup is index 1
              self.channel = layer_spec['block_specs'][-1][1]
         else:
-             # Fallback: Forward a dummy tensor
-             with torch.no_grad():
-                 dummy = torch.zeros(1, c1, 64, 64)
-                 self.channel = self.blocks(dummy).size(1)
+             # Fallback
+             raise ValueError(f"Could not determine output channels for stage {stage_name}")
 
     def forward(self, x):
         return self.blocks(x)
