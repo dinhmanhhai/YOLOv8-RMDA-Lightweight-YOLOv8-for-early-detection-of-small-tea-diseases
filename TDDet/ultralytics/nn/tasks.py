@@ -1018,6 +1018,8 @@ def parse_model(d, ch, verbose=True, warehouse_manager=None):  # model_dict, inp
         elif m in {CGAFusion, CAFMFusion}:
             c2 = ch[f[1]]
             args = [c2, *args]
+        elif m is FeatureSelector:
+            c2 = args[1]
         else:
             c2 = ch[f]
 

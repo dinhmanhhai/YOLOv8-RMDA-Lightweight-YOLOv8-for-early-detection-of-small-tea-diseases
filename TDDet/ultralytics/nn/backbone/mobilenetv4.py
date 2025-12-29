@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-__all__ = ['MobileNetV4ConvSmall', 'MobileNetV4ConvMedium', 'MobileNetV4ConvLarge', 'MobileNetV4ConvLargeMQA', 'MobileNetV4HybridMedium', 'MobileNetV4HybridLarge']
+__all__ = ['MobileNetV4ConvSmall', 'MobileNetV4ConvMedium', 'MobileNetV4ConvLarge', 'MobileNetV4ConvLargeMQA', 'MobileNetV4HybridMedium', 'MobileNetV4HybridLarge', 'FeatureSelector']
 
 MNV4ConvSmall_BLOCK_SPECS = {
     "conv0": {
@@ -550,6 +550,22 @@ def MobileNetV4ConvMedium():
 def MobileNetV4ConvLarge():
     model = MobileNetV4('MobileNetV4ConvLarge')
     return model
+
+class FeatureSelector(nn.Module):
+    """
+    Selects a specific feature from a list of features output by the backbone.
+    Args:
+        index (int): Index of the feature to select from the input list.
+        chan (int): Output channels (used for parsing, not in forward).
+    """
+    def __init__(self, index, chan=None):
+        super().__init__()
+        self.index = index
+
+    def forward(self, x):
+        # MobileNetV4 returns [None, None, P2, P3, P4, P5]
+        # x is this list
+        return x[self.index]
 
 def MobileNetV4ConvLargeMQA():
     """MobileNetV4-Large with Multi-Query Attention for TDDet."""
