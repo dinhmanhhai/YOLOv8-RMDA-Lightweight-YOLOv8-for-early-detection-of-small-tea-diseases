@@ -1,0 +1,47 @@
+# Ultralytics YOLO 🚀, AGPL-3.0 license
+# YOLOv8-MobileNetV4-MQA object detection model with Multi-Query Attention
+# Based on: "TDDet: A novel lightweight and efficient tea disease detector"
+
+# Parameters
+nc: 6  # number of classes (tea diseases)
+scales: # model compound scaling constants
+  # [depth, width, max_channels]
+  # [depth, width, max_channels]
+  l: [1.00, 1.00, 1024] # Use scale 'l' to keep original channel counts (64, 128...) defined in code
+
+# 0-P1/2   2x downsampling
+# 1-P2/4   4x downsampling
+# 2-P3/8   8x downsampling
+# 3-P4/16  16x downsampling
+# 4-P5/32  32x downsampling
+
+# Backbone: MobileNetV4-Large with Multi-Query Attention at Stage 4 & 5
+backbone:
+  # [from, repeats, module, args]
+  - [-1, 1, MobileNetV4ConvLargeMQA, []]  # Outputs: [P2, P3, P4, P5]
+  - [-1, 1, SPPF, [1024, 5]]  # Spatial Pyramid Pooling - Fast
+
+# Head: Feature fusion with CFF (Cross-scale Feature Fusion) and DySample upsampling
+head:
+  # Upsample and fuse P5 -> P4
+  - [-1, 1, DySample, [2, 'lp']] # 2: Upsample 2x with linear interpolation (Input: SPPF)
+  - [[-1, 3], 1, Concat, [1]]   # 3: Concatenate with P4 (from backbone)
+  - [-1, 3, CFF, [512]]         # 4: Cross-scale Feature Fusion
+
+  # Upsample and fuse P4 -> P3
+  - [-1, 1, DySample, [2, 'lp']] # 5: Upsample 2x
+  - [[-1, 2], 1, Concat, [1]]   # 6: Concatenate with P3 (from backbone)
+  - [-1, 3, CFF, [256]]         # 7 (P3/8-small): Feature fusion for small objects
+
+  # Downsample and fuse P3 -> P4
+  - [-1, 1, Conv, [256, 3, 2]]  # 8: Downsample 2x
+  - [[-1, 4], 1, Concat, [1]]   # 9: Concatenate with Head P4 (layer 4)
+  - [-1, 3, CFF, [512]]         # 10 (P4/16-medium): Feature fusion for medium objects
+
+  # Downsample and fuse P4 -> P5
+  - [-1, 1, Conv, [512, 3, 2]]  # 11: Downsample 2x
+  - [[-1, 1], 1, Concat, [1]]   # 12: Concatenate with SPPF (layer 1)
+  - [-1, 3, CFF, [1024]]        # 13 (P5/32-large): Feature fusion for large objects
+
+  # Detection heads
+  - [[7, 10, 13], 1, Detect, [nc]]  # Detect(P3, P4, P5)

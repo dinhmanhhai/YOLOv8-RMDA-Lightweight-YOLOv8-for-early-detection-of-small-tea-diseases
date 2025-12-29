@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-__all__ = ['MobileNetV4ConvSmall', 'MobileNetV4ConvMedium', 'MobileNetV4ConvLarge', 'MobileNetV4HybridMedium', 'MobileNetV4HybridLarge']
+__all__ = ['MobileNetV4ConvSmall', 'MobileNetV4ConvMedium', 'MobileNetV4ConvLarge', 'MobileNetV4ConvLargeMQA', 'MobileNetV4HybridMedium', 'MobileNetV4HybridLarge']
 
 MNV4ConvSmall_BLOCK_SPECS = {
     "conv0": {
@@ -218,10 +218,73 @@ MNV4HybridConvLarge_BLOCK_SPECS = {
 
 }
 
+# MobileNetV4-Large with Multi-Query Attention - EXACT TDDet ALIGNMENT
+MNV4ConvLargeMQA_BLOCK_SPECS = {
+    "conv0": {
+        "block_name": "convbn",
+        "num_blocks": 1,
+        "block_specs": [
+            [3, 64, 3, 2]  # Stage_1: 320x320x64
+        ]
+    },
+    "layer1": {
+        "block_name": "uib",
+        "num_blocks": 2,
+        "block_specs": [
+            [64, 128, 3, 5, True, 2, 4],  # Stage_2: 160x160x128
+            [128, 128, 3, 3, True, 1, 4]
+        ]
+    },
+    "layer2": {
+        "block_name": "uib",
+        "num_blocks": 2,
+        "block_specs": [
+            [128, 256, 3, 5, True, 2, 4],  # Stage_3: 80x80x256
+            [256, 256, 3, 3, True, 1, 4]
+        ]
+    },
+    "layer3": {
+        # Stage_4 with MQA (40x40x512)
+        "block_name": "uib_mqa",
+        "num_blocks": 6,
+        "block_specs": [
+            [256, 512, 5, 5, True, 2, 4],  # Downsample to 40x40
+            [512, 512, 5, 5, True, 1, 4],
+            [512, 512, 5, 5, True, 1, 4],
+            [512, 512, 5, 0, True, 1, 4],
+            [512, 512, 5, 3, True, 1, 4],
+            [512, 512, 5, 0, True, 1, 4]
+        ]
+    },
+    "layer4": {
+        # Stage_5 with MQA (20x20x512)
+        "block_name": "uib_mqa",
+        "num_blocks": 7,
+        "block_specs": [
+            [512, 512, 5, 5, True, 2, 4],  # Downsample to 20x20
+            [512, 512, 5, 3, True, 1, 4],
+            [512, 512, 5, 5, True, 1, 4],
+            [512, 512, 5, 0, True, 1, 4],
+            [512, 512, 5, 0, True, 1, 4],
+            [512, 512, 5, 0, True, 1, 4],
+            [512, 512, 3, 0, True, 1, 4]
+        ]
+    },
+    "layer5": {
+        # Final Grey Box Conv2d (20x20x512)
+        "block_name": "convbn",
+        "num_blocks": 1,
+        "block_specs": [
+            [512, 512, 3, 1]  # Changed to 3x3 kernel
+        ]
+    }
+}
+
 MODEL_SPECS = {
     "MobileNetV4ConvSmall": MNV4ConvSmall_BLOCK_SPECS,
     "MobileNetV4ConvMedium": MNV4ConvMedium_BLOCK_SPECS,
     "MobileNetV4ConvLarge": MNV4ConvLarge_BLOCK_SPECS,
+    "MobileNetV4ConvLargeMQA": MNV4ConvLargeMQA_BLOCK_SPECS,
     "MobileNetV4HybridMedium": MNV4HybridConvMedium_BLOCK_SPECS,
     "MobileNetV4HybridLarge": MNV4HybridConvLarge_BLOCK_SPECS,
 }
@@ -330,6 +393,76 @@ class UniversalInvertedBottleneckBlock(nn.Module): #UIB
         # print("_proj_conv", x.shape)
         return x
 
+class UIBWithMQA(nn.Module):
+    """
+    Universal Inverted Bottleneck Block with Multi-Query Attention.
+    
+    This block combines the UIB from MobileNetV4 with MQA for enhanced
+    feature extraction in Stage_4 and Stage_5 of TDDet.
+    
+    Architecture: Input -> UIB -> MQA -> Add(input, output) -> Output
+    
+    Args:
+        inp (int): Input channels
+        oup (int): Output channels
+        start_dw_kernel_size (int): Kernel size for starting depthwise conv
+        middle_dw_kernel_size (int): Kernel size for middle depthwise conv
+        middle_dw_downsample (bool): Whether to downsample in middle dw conv
+        stride (int): Stride for convolutions
+        expand_ratio (float): Expansion ratio for hidden channels
+        num_heads (int): Number of attention heads for MQA. Default: 8
+    """
+    def __init__(self,
+                 inp,
+                 oup,
+                 start_dw_kernel_size,
+                 middle_dw_kernel_size,
+                 middle_dw_downsample,
+                 stride,
+                 expand_ratio,
+                 num_heads=8):
+        super().__init__()
+        
+        # UIB block
+        self.uib = UniversalInvertedBottleneckBlock(
+            inp, oup, start_dw_kernel_size, middle_dw_kernel_size,
+            middle_dw_downsample, stride, expand_ratio
+        )
+        
+        # Import MQA here to avoid circular import
+        try:
+            from .mqa import MQABlock
+            self.mqa = MQABlock(oup, num_heads)
+            self.use_mqa = True
+        except ImportError:
+            print("Warning: MQA module not found. Using UIB only.")
+            self.use_mqa = False
+        
+        # Residual connection (identity mapping or conv for channel matching)
+        self.use_residual = (inp == oup and stride == 1)
+        if not self.use_residual and inp != oup:
+            self.residual_conv = conv_2d(inp, oup, kernel_size=1, stride=stride, act=False)
+        
+    def forward(self, x):
+        # Save input for residual
+        identity = x
+        
+        # UIB forward
+        out = self.uib(x)
+        
+        # MQA forward (if available)
+        if self.use_mqa:
+            out = self.mqa(out)
+        
+        # Residual connection
+        if self.use_residual:
+            out = out + identity
+        elif hasattr(self, 'residual_conv'):
+            out = out + self.residual_conv(identity)
+        
+        return out
+
+
 def build_blocks(layer_spec):
     if not layer_spec.get('block_name'):
         return nn.Sequential()
@@ -347,6 +480,12 @@ def build_blocks(layer_spec):
         for i in range(layer_spec['num_blocks']):
             args = dict(zip(schema_, layer_spec['block_specs'][i]))
             layers.add_module(f"uib_{i}", UniversalInvertedBottleneckBlock(**args))
+    elif block_names == "uib_mqa":
+        schema_ =  ['inp', 'oup', 'start_dw_kernel_size', 'middle_dw_kernel_size', 'middle_dw_downsample', 'stride', 'expand_ratio']
+        args = {}
+        for i in range(layer_spec['num_blocks']):
+            args = dict(zip(schema_, layer_spec['block_specs'][i]))
+            layers.add_module(f"uib_mqa_{i}", UIBWithMQA(**args))
     elif block_names == "fused_ib":
         schema_ = ['inp', 'oup', 'stride', 'expand_ratio', 'act']
         args = {}
@@ -361,40 +500,43 @@ def build_blocks(layer_spec):
 class MobileNetV4(nn.Module):
     def __init__(self, model):
         # MobileNetV4ConvSmall  MobileNetV4ConvMedium  MobileNetV4ConvLarge
+        # MobileNetV4ConvLargeMQA
         # MobileNetV4HybridMedium  MobileNetV4HybridLarge
         """Params to initiate MobilenNetV4
         Args:
-            model : support 5 types of models as indicated in 
-            "https://github.com/tensorflow/models/blob/master/official/vision/modeling/backbones/mobilenet.py"        
+            model : support 6 types of models.
         """
         super().__init__()
         assert model in MODEL_SPECS.keys()
         self.model = model
         self.spec = MODEL_SPECS[self.model]
        
-        # conv0
+        # conv0 (Stage 1)
         self.conv0 = build_blocks(self.spec['conv0'])
-        # layer1
+        # layer1 (Stage 2)
         self.layer1 = build_blocks(self.spec['layer1'])
-        # layer2
+        # layer2 (Stage 3)
         self.layer2 = build_blocks(self.spec['layer2'])
-        # layer3
+        # layer3 (Stage 4)
         self.layer3 = build_blocks(self.spec['layer3'])
-        # layer4
+        # layer4 (Stage 5)
         self.layer4 = build_blocks(self.spec['layer4'])
-        # layer5   
+        # layer5 (Final/Extra)  
         self.layer5 = build_blocks(self.spec['layer5'])
-        self.features = nn.ModuleList([self.conv0, self.layer1, self.layer2, self.layer3, self.layer4, self.layer5])     
+        
+        self.features = nn.ModuleList([self.conv0, self.layer1, self.layer2, self.layer3, self.layer4, self.layer5])
+        
         self.channel = [i.size(1) for i in self.forward(torch.randn(1, 3, 640, 640))]
         
     def forward(self, x):
         input_size = x.size(2)
-        scale = [4, 8, 16, 32]
+        scale = [4, 8, 16, 32] # P2, P3, P4, P5
         features = [None, None, None, None]
         for f in self.features:
             x = f(x)
-            if input_size // x.size(2) in scale:
-                features[scale.index(input_size // x.size(2))] = x
+            current_scale = input_size // x.size(2)
+            if current_scale in scale:
+                features[scale.index(current_scale)] = x
         return features
 
 def MobileNetV4ConvSmall():
@@ -407,6 +549,11 @@ def MobileNetV4ConvMedium():
 
 def MobileNetV4ConvLarge():
     model = MobileNetV4('MobileNetV4ConvLarge')
+    return model
+
+def MobileNetV4ConvLargeMQA():
+    """MobileNetV4-Large with Multi-Query Attention for TDDet."""
+    model = MobileNetV4('MobileNetV4ConvLargeMQA')
     return model
 
 def MobileNetV4HybridMedium():
